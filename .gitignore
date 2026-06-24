@@ -2,3 +2,7 @@
 *.db
 *.db-wal
 *.db-shm
+spec.db
+spec.db-wal
+spec.db-shm
+SPEC.md
