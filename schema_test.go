@@ -54,6 +54,7 @@ func TestSchemaApplies(t *testing.T) {
 	db := openTestDB(t)
 
 	want := []string{
+		"project",
 		"invariant", "interface", "bug", "research",
 		"feature", "goal", "constraint", "task",
 		"task_cites_inv", "task_cites_iface", "bug_fix",
@@ -74,6 +75,62 @@ func TestSchemaApplies(t *testing.T) {
 	}
 	if uv != userVersion {
 		t.Errorf("user_version = %d, want %d", uv, userVersion)
+	}
+}
+
+// V20: deleting a project cascades to its durable rows + features.
+func TestProjectCascade(t *testing.T) {
+	db := openTestDB(t)
+	res, err := db.Exec(`INSERT INTO project(path) VALUES('/repo')`)
+	if err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	pid, _ := res.LastInsertId()
+	if _, err := db.Exec(`INSERT INTO invariant(project_id, ord, text) VALUES(?, 1, 'inv')`, pid); err != nil {
+		t.Fatalf("insert invariant: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO feature(project_id, ord, name) VALUES(?, 1, 'f')`, pid); err != nil {
+		t.Fatalf("insert feature: %v", err)
+	}
+
+	if _, err := db.Exec(`DELETE FROM project WHERE id=?`, pid); err != nil {
+		t.Fatalf("delete project: %v", err)
+	}
+	if n := count(t, db, "invariant"); n != 0 {
+		t.Errorf("invariant after project delete = %d, want 0 (cascade)", n)
+	}
+	if n := count(t, db, "feature"); n != 0 {
+		t.Errorf("feature after project delete = %d, want 0 (cascade)", n)
+	}
+}
+
+// V24: interface name is unique per project — two projects may each own "init",
+// but a project may not duplicate it.
+func TestInterfaceNamePerProject(t *testing.T) {
+	db := openTestDB(t)
+	a, _ := db.Exec(`INSERT INTO project(path) VALUES('/a')`)
+	b, _ := db.Exec(`INSERT INTO project(path) VALUES('/b')`)
+	aid, _ := a.LastInsertId()
+	bid, _ := b.LastInsertId()
+
+	if _, err := db.Exec(`INSERT INTO interface(project_id, kind, name, sig) VALUES(?, 'cmd', 'init', 's')`, aid); err != nil {
+		t.Fatalf("project A init: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO interface(project_id, kind, name, sig) VALUES(?, 'cmd', 'init', 's')`, bid); err != nil {
+		t.Errorf("project B init rejected — name unique is still global (V24 violated): %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO interface(project_id, kind, name, sig) VALUES(?, 'cmd', 'init', 's')`, aid); err == nil {
+		t.Error("duplicate init within project A accepted (V24: must be unique per project)")
+	}
+}
+
+// V26: the per-project ordinal column exists on every numbered kind.
+func TestOrdColumnsExist(t *testing.T) {
+	db := openTestDB(t)
+	for _, tbl := range []string{"invariant", "bug", "research", "feature", "task"} {
+		if _, err := db.Query(`SELECT ord FROM "` + tbl + `" LIMIT 0`); err != nil {
+			t.Errorf("no ord column on %s (V26): %v", tbl, err)
+		}
 	}
 }
 
