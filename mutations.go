@@ -131,11 +131,12 @@ func addBug(db *sql.DB, date, cause string, fixRefs []string) (int64, error) {
 	return bugID, nil
 }
 
-// splitRefs parses a comma list, dropping blanks.
+// splitRefs parses a comma list, dropping blanks and the `-` empty sentinel
+// (FORMAT.md renders "no refs" as `-`).
 func splitRefs(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
+		if p = strings.TrimSpace(p); p != "" && p != "-" {
 			out = append(out, p)
 		}
 	}

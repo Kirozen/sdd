@@ -44,7 +44,7 @@ func mustTask(t *testing.T, db *sql.DB, fid int64, text string) int64 {
 func count(t *testing.T, db *sql.DB, table string) int {
 	t.Helper()
 	var n int
-	if err := db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); err != nil {
+	if err := db.QueryRow(`SELECT count(*) FROM "` + table + `"`).Scan(&n); err != nil {
 		t.Fatalf("count %s: %v", table, err)
 	}
 	return n

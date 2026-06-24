@@ -59,6 +59,18 @@ func TestAddTaskUnknownInterfaceRollback(t *testing.T) {
 	}
 }
 
+// V15: the `-` empty sentinel and blanks are not treated as refs (B1).
+func TestSplitRefsDropsSentinel(t *testing.T) {
+	for _, in := range []string{"-", "", " , - , "} {
+		if got := splitRefs(in); len(got) != 0 {
+			t.Errorf("splitRefs(%q) = %v, want empty", in, got)
+		}
+	}
+	if got := splitRefs("V1,-,I.init"); len(got) != 2 {
+		t.Errorf("splitRefs dropped a real ref: %v", got)
+	}
+}
+
 func TestAddBugFix(t *testing.T) {
 	db := openTestDB(t)
 	invID, _ := addInvariant(db, "inv")
