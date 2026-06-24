@@ -25,6 +25,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newAddInterfaceCmd())
 	root.AddCommand(newAddBugCmd())
 	root.AddCommand(newWipeFeatureCmd())
+	root.AddCommand(newCheckCmd())
 	return root
 }
 
