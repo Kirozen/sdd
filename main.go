@@ -17,6 +17,13 @@ func newRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newExportCmd())
+	root.AddCommand(newNewFeatureCmd())
+	root.AddCommand(newAddGoalCmd())
+	root.AddCommand(newAddConstraintCmd())
+	root.AddCommand(newAddTaskCmd())
+	root.AddCommand(newAddInvariantCmd())
+	root.AddCommand(newAddInterfaceCmd())
+	root.AddCommand(newAddBugCmd())
 	return root
 }
 
