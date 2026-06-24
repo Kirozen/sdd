@@ -8,35 +8,36 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// refsTo returns the reverse citations of a ref — who points at it — as caveman
-// lines. Only invariants and interfaces are citation targets: an invariant is
-// cited by tasks and fixed by bugs; an interface is cited by tasks. Each citer
-// is rendered through showRef, so lines match SPEC.md (V18). Read-pure (V16).
-// A non-target or unknown ref errors (V17); an uncited target → no lines.
-func refsTo(db *sql.DB, ref string) ([]string, error) {
+// refsTo returns the reverse citations of a ref within the current project — who
+// points at it — as caveman lines. Only invariants and interfaces are citation
+// targets: an invariant is cited by tasks and fixed by bugs; an interface is
+// cited by tasks. Each citer is rendered through showRef, so lines match
+// SPEC.md (V18). Read-pure (V16), scoped (V20). Non-target/unknown ref → error
+// (V17); an uncited target → no lines.
+func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 	switch {
 	case strings.HasPrefix(ref, "I."):
 		name := ref[2:]
-		var iid int
-		if err := db.QueryRow(`SELECT id FROM interface WHERE name=?`, name).Scan(&iid); err != nil {
-			return nil, fmt.Errorf("no interface %q", ref)
+		var iid int64
+		if err := db.QueryRow(`SELECT id FROM interface WHERE project_id=? AND name=?`, projectID, name).Scan(&iid); err != nil {
+			return nil, fmt.Errorf("no interface %q in this project", ref)
 		}
-		return citerLines(db, `SELECT task_id FROM task_cites_iface WHERE iface_id=? ORDER BY task_id`, iid, "T")
+		return citerLines(db, projectID, `SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id=j.task_id WHERE j.iface_id=? ORDER BY t.ord`, iid, "T")
 
 	case strings.HasPrefix(ref, "V"):
-		id, err := refID(ref)
+		ord, err := refID(ref)
 		if err != nil {
 			return nil, err
 		}
-		var x int
-		if err := db.QueryRow(`SELECT id FROM invariant WHERE id=?`, id).Scan(&x); err != nil {
-			return nil, fmt.Errorf("no invariant %q", ref)
+		var iid int64
+		if err := db.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, ord).Scan(&iid); err != nil {
+			return nil, fmt.Errorf("no invariant %q in this project", ref)
 		}
-		tasks, err := citerLines(db, `SELECT task_id FROM task_cites_inv WHERE inv_id=? ORDER BY task_id`, id, "T")
+		tasks, err := citerLines(db, projectID, `SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id=j.task_id WHERE j.inv_id=? ORDER BY t.ord`, iid, "T")
 		if err != nil {
 			return nil, err
 		}
-		bugs, err := citerLines(db, `SELECT bug_id FROM bug_fix WHERE inv_id=? ORDER BY bug_id`, id, "B")
+		bugs, err := citerLines(db, projectID, `SELECT b.ord FROM bug_fix j JOIN bug b ON b.id=j.bug_id WHERE j.inv_id=? ORDER BY b.ord`, iid, "B")
 		if err != nil {
 			return nil, err
 		}
@@ -47,30 +48,29 @@ func refsTo(db *sql.DB, ref string) ([]string, error) {
 	}
 }
 
-// citerLines runs an id query then renders each id as a "<prefix><id>" ref line
-// through showRef (reusing V18 formatting). The cursor is drained before showRef
-// re-queries.
-func citerLines(db *sql.DB, query string, arg int, prefix string) ([]string, error) {
+// citerLines runs an ordinal query then renders each "<prefix><ord>" ref through
+// showRef (reusing V18 formatting, scoped to projectID).
+func citerLines(db *sql.DB, projectID int64, query string, arg int64, prefix string) ([]string, error) {
 	rows, err := db.Query(query, arg)
 	if err != nil {
 		return nil, err
 	}
-	var ids []int
+	var ords []int
 	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
+		var ord int
+		if err := rows.Scan(&ord); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		ids = append(ids, id)
+		ords = append(ords, ord)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	var out []string
-	for _, id := range ids {
-		line, err := showRef(db, fmt.Sprintf("%s%d", prefix, id))
+	for _, ord := range ords {
+		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, ord))
 		if err != nil {
 			return nil, err
 		}
@@ -85,12 +85,12 @@ func newRefsCmd() *cobra.Command {
 		Short: "print rows citing a ref (V<n>/I.<name>), read-only",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := openProjectDB()
+			db, pid, _, err := openProjectContext()
 			if err != nil {
 				return err
 			}
 			defer db.Close()
-			lines, err := refsTo(db, args[0])
+			lines, err := refsTo(db, pid, args[0])
 			if err != nil {
 				return err
 			}

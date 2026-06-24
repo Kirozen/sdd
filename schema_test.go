@@ -21,9 +21,19 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func mustFeature(t *testing.T, db *sql.DB, name string) int64 {
+func mustProject(t *testing.T, db *sql.DB) int64 {
 	t.Helper()
-	res, err := db.Exec(`INSERT INTO feature(name) VALUES(?)`, name)
+	res, err := db.Exec(`INSERT INTO project(path) VALUES('/test/' || (SELECT COALESCE(MAX(id),0)+1 FROM project))`)
+	if err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func mustFeature(t *testing.T, db *sql.DB, projectID int64, name string) int64 {
+	t.Helper()
+	res, err := db.Exec(`INSERT INTO feature(project_id, ord, name) VALUES(?, (SELECT COALESCE(MAX(ord),0)+1 FROM feature WHERE project_id=?), ?)`, projectID, projectID, name)
 	if err != nil {
 		t.Fatalf("insert feature: %v", err)
 	}
@@ -31,9 +41,9 @@ func mustFeature(t *testing.T, db *sql.DB, name string) int64 {
 	return id
 }
 
-func mustTask(t *testing.T, db *sql.DB, fid int64, text string) int64 {
+func mustTask(t *testing.T, db *sql.DB, featurePK int64, text string) int64 {
 	t.Helper()
-	res, err := db.Exec(`INSERT INTO task(feature_id, text) VALUES(?, ?)`, fid, text)
+	res, err := db.Exec(`INSERT INTO task(feature_id, ord, text) VALUES(?, (SELECT COALESCE(MAX(t.ord),0)+1 FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=(SELECT project_id FROM feature WHERE id=?)), ?)`, featurePK, featurePK, text)
 	if err != nil {
 		t.Fatalf("insert task: %v", err)
 	}
@@ -137,7 +147,8 @@ func TestOrdColumnsExist(t *testing.T) {
 // V5: a task citing a non-existent invariant is rejected by the FK.
 func TestFK_OrphanCiteRejected(t *testing.T) {
 	db := openTestDB(t)
-	fid := mustFeature(t, db, "f")
+	pid := mustProject(t, db)
+	fid := mustFeature(t, db, pid, "f")
 	tid := mustTask(t, db, fid, "t")
 
 	if _, err := db.Exec(
@@ -150,10 +161,11 @@ func TestFK_OrphanCiteRejected(t *testing.T) {
 // V4: wiping a feature deletes only its rows; durable rows survive.
 func TestWipeCascade(t *testing.T) {
 	db := openTestDB(t)
+	pid := mustProject(t, db)
 	if _, err := db.Exec(`INSERT INTO invariant(id, text) VALUES(1, 'durable')`); err != nil {
 		t.Fatalf("insert invariant: %v", err)
 	}
-	fid := mustFeature(t, db, "f")
+	fid := mustFeature(t, db, pid, "f")
 	if _, err := db.Exec(`INSERT INTO goal(feature_id, text) VALUES(?, 'g')`, fid); err != nil {
 		t.Fatalf("insert goal: %v", err)
 	}
@@ -199,7 +211,8 @@ func TestInterfaceStatusCheck(t *testing.T) {
 // V10: task.status is constrained; default is todo.
 func TestTaskStatusCheck(t *testing.T) {
 	db := openTestDB(t)
-	fid := mustFeature(t, db, "f")
+	pid := mustProject(t, db)
+	fid := mustFeature(t, db, pid, "f")
 	if _, err := db.Exec(
 		`INSERT INTO task(feature_id, text, status) VALUES(?, 't', 'q')`, fid,
 	); err == nil {

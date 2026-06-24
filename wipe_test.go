@@ -5,18 +5,19 @@ import "testing"
 // V4: wipe-feature deletes only that feature's rows; durable rows survive.
 func TestWipeFeatureCmd(t *testing.T) {
 	db := openTestDB(t)
-	if _, err := addInvariant(db, "durable"); err != nil {
+	pid := mustProject(t, db)
+	if _, err := addInvariant(db, pid, "durable"); err != nil {
 		t.Fatalf("addInvariant: %v", err)
 	}
-	fid, _ := addFeature(db, "f")
+	fid, _ := addFeature(db, pid, "f")
 	if err := addGoal(db, fid, "g"); err != nil {
 		t.Fatalf("addGoal: %v", err)
 	}
-	if _, err := addTask(db, fid, "t", nil); err != nil {
+	if _, err := addTask(db, pid, fid, "t", nil); err != nil {
 		t.Fatalf("addTask: %v", err)
 	}
 
-	if err := wipeFeature(db, fid); err != nil {
+	if err := wipeFeature(db, pid, fid); err != nil {
 		t.Fatalf("wipeFeature: %v", err)
 	}
 
@@ -36,7 +37,8 @@ func TestWipeFeatureCmd(t *testing.T) {
 
 func TestWipeUnknownFeature(t *testing.T) {
 	db := openTestDB(t)
-	if err := wipeFeature(db, 999); err == nil {
+	pid := mustProject(t, db)
+	if err := wipeFeature(db, pid, 999); err == nil {
 		t.Fatal("wiping unknown feature succeeded")
 	}
 }
@@ -44,12 +46,13 @@ func TestWipeUnknownFeature(t *testing.T) {
 // other features are untouched by a scoped wipe.
 func TestWipeLeavesOtherFeatures(t *testing.T) {
 	db := openTestDB(t)
-	keep, _ := addFeature(db, "keep")
+	pid := mustProject(t, db)
+	keep, _ := addFeature(db, pid, "keep")
 	addGoal(db, keep, "g")
-	drop, _ := addFeature(db, "drop")
+	drop, _ := addFeature(db, pid, "drop")
 	addGoal(db, drop, "g")
 
-	if err := wipeFeature(db, drop); err != nil {
+	if err := wipeFeature(db, pid, drop); err != nil {
 		t.Fatalf("wipeFeature: %v", err)
 	}
 	if n := count(t, db, "feature"); n != 1 {

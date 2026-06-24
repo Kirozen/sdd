@@ -7,59 +7,59 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listKind returns every row of a kind as caveman lines, ORDER BY id, formatted
-// through the same fmt*Line helpers as renderSpec (V18). Read-pure (V16). An
-// unknown kind errors (V17); a valid-but-empty kind returns no lines, no error.
-func listKind(db *sql.DB, kind string) ([]string, error) {
+// listKind returns every row of a kind in the current project as caveman lines,
+// ordered by the per-project ordinal, formatted through the same fmt*Line
+// helpers as renderSpec (V18). Read-pure (V16); scoped by project (V20). An
+// unknown kind errors (V17); a valid-but-empty kind returns no lines.
+func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 	switch kind {
 	case "invariant":
-		return listRows(db, `SELECT id, text FROM invariant ORDER BY id`, func(rows *sql.Rows) (string, error) {
-			var id int
+		return listRows(db, `SELECT ord, text FROM invariant WHERE project_id=? ORDER BY ord`, projectID, func(rows *sql.Rows) (string, error) {
+			var ord int
 			var text string
-			if err := rows.Scan(&id, &text); err != nil {
+			if err := rows.Scan(&ord, &text); err != nil {
 				return "", err
 			}
-			return fmtInvariantLine(id, text), nil
+			return fmtInvariantLine(ord, text), nil
 		})
 	case "interface":
-		return listRows(db, `SELECT id, kind, name, sig, status FROM interface ORDER BY id`, func(rows *sql.Rows) (string, error) {
-			var id int
+		return listRows(db, `SELECT kind, name, sig, status FROM interface WHERE project_id=? ORDER BY id`, projectID, func(rows *sql.Rows) (string, error) {
 			var k, name, sig, status string
-			if err := rows.Scan(&id, &k, &name, &sig, &status); err != nil {
+			if err := rows.Scan(&k, &name, &sig, &status); err != nil {
 				return "", err
 			}
 			return fmtInterfaceLine(k, name, sig, status), nil
 		})
 	case "research":
-		return listRows(db, `SELECT id, topic, finding, src FROM research ORDER BY id`, func(rows *sql.Rows) (string, error) {
-			var id int
+		return listRows(db, `SELECT ord, topic, finding, src FROM research WHERE project_id=? ORDER BY ord`, projectID, func(rows *sql.Rows) (string, error) {
+			var ord int
 			var topic, finding, src string
-			if err := rows.Scan(&id, &topic, &finding, &src); err != nil {
+			if err := rows.Scan(&ord, &topic, &finding, &src); err != nil {
 				return "", err
 			}
-			return fmtResearchLine(id, topic, finding, src), nil
+			return fmtResearchLine(ord, topic, finding, src), nil
 		})
 	case "feature":
-		return listRows(db, `SELECT id, name FROM feature ORDER BY id`, func(rows *sql.Rows) (string, error) {
-			var id int
+		return listRows(db, `SELECT ord, name FROM feature WHERE project_id=? ORDER BY ord`, projectID, func(rows *sql.Rows) (string, error) {
+			var ord int
 			var name string
-			if err := rows.Scan(&id, &name); err != nil {
+			if err := rows.Scan(&ord, &name); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("FEATURE %d: %s", id, name), nil
+			return fmt.Sprintf("FEATURE %d: %s", ord, name), nil
 		})
 	case "task":
-		return listTasks(db)
+		return listTasks(db, projectID)
 	case "bug":
-		return listBugs(db)
+		return listBugs(db, projectID)
 	default:
 		return nil, fmt.Errorf("unknown kind %q (want invariant|interface|task|bug|research|feature)", kind)
 	}
 }
 
-// listRows runs query and maps each row to a line via fn.
-func listRows(db *sql.DB, query string, fn func(*sql.Rows) (string, error)) ([]string, error) {
-	rows, err := db.Query(query)
+// listRows runs query (scoped to projectID) and maps each row to a line via fn.
+func listRows(db *sql.DB, query string, projectID int64, fn func(*sql.Rows) (string, error)) ([]string, error) {
+	rows, err := db.Query(query, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,20 +76,21 @@ func listRows(db *sql.DB, query string, fn func(*sql.Rows) (string, error)) ([]s
 }
 
 // listTasks and listBugs need a second query per row (cites / fix), so they
-// drain the cursor before re-joining (a cursor can't be open during a query).
-func listTasks(db *sql.DB) ([]string, error) {
+// drain the cursor before re-joining.
+func listTasks(db *sql.DB, projectID int64) ([]string, error) {
 	type tk struct {
-		id           int
+		pk           int64
+		ord          int
 		status, text string
 	}
 	var tasks []tk
-	rows, err := db.Query(`SELECT id, status, text FROM task ORDER BY id`)
+	rows, err := db.Query(`SELECT t.id, t.ord, t.status, t.text FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=? ORDER BY t.ord`, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var t tk
-		if err := rows.Scan(&t.id, &t.status, &t.text); err != nil {
+		if err := rows.Scan(&t.pk, &t.ord, &t.status, &t.text); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -101,28 +102,29 @@ func listTasks(db *sql.DB) ([]string, error) {
 	}
 	var out []string
 	for _, t := range tasks {
-		cites, err := taskCites(db, t.id)
+		cites, err := taskCites(db, t.pk)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fmtTaskLine(t.id, t.status, t.text, cites))
+		out = append(out, fmtTaskLine(t.ord, t.status, t.text, cites))
 	}
 	return out, nil
 }
 
-func listBugs(db *sql.DB) ([]string, error) {
+func listBugs(db *sql.DB, projectID int64) ([]string, error) {
 	type bg struct {
-		id          int
+		pk          int64
+		ord         int
 		date, cause string
 	}
 	var bugs []bg
-	rows, err := db.Query(`SELECT id, date, cause FROM bug ORDER BY id`)
+	rows, err := db.Query(`SELECT id, ord, date, cause FROM bug WHERE project_id=? ORDER BY ord`, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var b bg
-		if err := rows.Scan(&b.id, &b.date, &b.cause); err != nil {
+		if err := rows.Scan(&b.pk, &b.ord, &b.date, &b.cause); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -134,11 +136,11 @@ func listBugs(db *sql.DB) ([]string, error) {
 	}
 	var out []string
 	for _, b := range bugs {
-		fix, err := bugFix(db, b.id)
+		fix, err := bugFix(db, b.pk)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fmtBugLine(b.id, b.date, b.cause, fix))
+		out = append(out, fmtBugLine(b.ord, b.date, b.cause, fix))
 	}
 	return out, nil
 }
@@ -149,12 +151,12 @@ func newListCmd() *cobra.Command {
 		Short: "print all rows of a kind (invariant|interface|task|bug|research|feature), read-only",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := openProjectDB()
+			db, pid, _, err := openProjectContext()
 			if err != nil {
 				return err
 			}
 			defer db.Close()
-			lines, err := listKind(db, args[0])
+			lines, err := listKind(db, pid, args[0])
 			if err != nil {
 				return err
 			}

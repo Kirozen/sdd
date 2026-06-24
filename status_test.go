@@ -10,21 +10,21 @@ import (
 // that cites a deprecated interface.
 func TestStatusCountsAndDeprecatedWarn(t *testing.T) {
 	db := openTestDB(t)
-	iid, err := addInterface(db, "cmd", "olditer", "sig")
-	if err != nil {
+	pid := mustProject(t, db)
+	if _, err := addInterface(db, pid, "cmd", "olditer", "sig"); err != nil {
 		t.Fatalf("addInterface: %v", err)
 	}
-	fid, err := addFeature(db, "f")
+	fid, err := addFeature(db, pid, "f")
 	if err != nil {
 		t.Fatalf("addFeature: %v", err)
 	}
-	tid, err := addTask(db, fid, "uses old", []string{"I.olditer"})
+	tid, err := addTask(db, pid, fid, "uses old", []string{"I.olditer"})
 	if err != nil {
 		t.Fatalf("addTask: %v", err)
 	}
 
 	// counts: the one task sits at the default status "."
-	lines, err := statusReport(db)
+	lines, err := statusReport(db, pid)
 	if err != nil {
 		t.Fatalf("statusReport: %v", err)
 	}
@@ -37,10 +37,10 @@ func TestStatusCountsAndDeprecatedWarn(t *testing.T) {
 	}
 
 	// deprecate the cited interface → the warning appears (V19)
-	if err := deprecateInterface(db, iid); err != nil {
+	if err := deprecateInterface(db, pid, "olditer"); err != nil {
 		t.Fatalf("deprecateInterface: %v", err)
 	}
-	lines, err = statusReport(db)
+	lines, err = statusReport(db, pid)
 	if err != nil {
 		t.Fatalf("statusReport after deprecate: %v", err)
 	}

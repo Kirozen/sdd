@@ -3,67 +3,61 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-// TestLifecycle runs a full init→populate→export→check→wipe flow in an isolated
-// directory, exercising V4 (wipe keeps durable), V5 (FK), V6 (check), V7
-// (deterministic export) through the same paths the CLI uses.
+// TestLifecycle runs a full populate→export→check→wipe flow against a single
+// project in the db, exercising V4 (wipe keeps durable), V5 (FK), V6 (check), V7
+// (deterministic export) through the same core functions the CLI uses.
 func TestLifecycle(t *testing.T) {
-	t.Chdir(t.TempDir())
+	db := openTestDB(t)
+	pid := mustProject(t, db)
+	spec := filepath.Join(t.TempDir(), "SPEC.md")
 
-	if err := runInit("."); err != nil {
-		t.Fatalf("init: %v", err)
-	}
-	db, err := openProjectDB()
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer db.Close()
-
-	invID, err := addInvariant(db, "auth check before handler")
+	invOrd, err := addInvariant(db, pid, "auth check before handler")
 	if err != nil {
 		t.Fatalf("addInvariant: %v", err)
 	}
-	if _, err := addInterface(db, "cmd", "init", "create db"); err != nil {
+	if _, err := addInterface(db, pid, "cmd", "init", "create db"); err != nil {
 		t.Fatalf("addInterface: %v", err)
 	}
-	fid, _ := addFeature(db, "auth")
-	if err := addGoal(db, fid, "login JWT"); err != nil {
+	fpk, _ := addFeature(db, pid, "auth")
+	if err := addGoal(db, fpk, "login JWT"); err != nil {
 		t.Fatalf("addGoal: %v", err)
 	}
-	if err := addConstraint(db, fid, "expire 15min"); err != nil {
+	if err := addConstraint(db, fpk, "expire 15min"); err != nil {
 		t.Fatalf("addConstraint: %v", err)
 	}
-	if _, err := addTask(db, fid, "impl mw", []string{fmt.Sprintf("V%d", invID), "I.init"}); err != nil {
+	if _, err := addTask(db, pid, fpk, "impl mw", []string{fmt.Sprintf("V%d", invOrd), "I.init"}); err != nil {
 		t.Fatalf("addTask: %v", err)
 	}
 
 	// export then check is clean (V6)
-	if err := exportSpec(db, specPath); err != nil {
+	if err := exportSpec(db, pid, spec); err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	if err := checkSpec(db, specPath); err != nil {
+	if err := checkSpec(db, pid, spec); err != nil {
 		t.Errorf("check after export: %v", err)
 	}
 
 	// V7: a second export is byte-identical
-	before, _ := os.ReadFile(specPath)
-	if err := exportSpec(db, specPath); err != nil {
+	before, _ := os.ReadFile(spec)
+	if err := exportSpec(db, pid, spec); err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
-	after, _ := os.ReadFile(specPath)
+	after, _ := os.ReadFile(spec)
 	if string(before) != string(after) {
 		t.Error("re-export not byte-identical (V7)")
 	}
 
 	// V5: orphan cite rejected, nothing partial
-	if _, err := addTask(db, fid, "bad", []string{"V999"}); err == nil {
+	if _, err := addTask(db, pid, fpk, "bad", []string{"V999"}); err == nil {
 		t.Error("orphan cite accepted (V5)")
 	}
 
-	// V4: wipe the feature, durable invariant + interface survive
-	if err := wipeFeature(db, fid); err != nil {
+	// V4: wipe the feature (ord 1 in a fresh project), durable rows survive
+	if err := wipeFeature(db, pid, 1); err != nil {
 		t.Fatalf("wipe: %v", err)
 	}
 	if n := count(t, db, "task"); n != 0 {
@@ -77,10 +71,10 @@ func TestLifecycle(t *testing.T) {
 	}
 
 	// export + check still consistent after wipe (V6)
-	if err := exportSpec(db, specPath); err != nil {
+	if err := exportSpec(db, pid, spec); err != nil {
 		t.Fatalf("export after wipe: %v", err)
 	}
-	if err := checkSpec(db, specPath); err != nil {
+	if err := checkSpec(db, pid, spec); err != nil {
 		t.Errorf("check after wipe: %v", err)
 	}
 }

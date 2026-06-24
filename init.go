@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,45 +8,53 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// gitignoreEntries are added to the project .gitignore by init: the db, its WAL
-// sidecars, and the generated export — all local working artifacts (§C).
-var gitignoreEntries = []string{"spec.db", "spec.db-wal", "spec.db-shm", "SPEC.md"}
+// gitignoreEntries are added to the project .gitignore by init. The db now lives
+// in the global store outside the repo (V22), so only the generated export is
+// gitignored locally (N-7).
+var gitignoreEntries = []string{"SPEC.md"}
 
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "create spec.db + schema in the current directory",
+		Short: "register the current repo as a project in the global store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := runInit("."); err != nil {
+			cwd, err := os.Getwd()
+			if err != nil {
 				return err
 			}
-			cmd.Println("initialized spec.db")
+			if err := runInit(cwd); err != nil {
+				return err
+			}
+			cmd.Println("initialized project in the global store")
 			return nil
 		},
 	}
 }
 
-// runInit creates spec.db with the schema in dir, refusing to clobber an
-// existing db, and ensures the export/db artifacts are gitignored.
+// runInit ensures the global db exists and registers (find-or-create) the repo
+// at dir as a project (V20, V22). Idempotent — re-running on a known project is
+// a no-op find. Gitignores the local SPEC.md and writes the project's (possibly
+// empty) export at the worktree root.
 func runInit(dir string) error {
-	dbPath := filepath.Join(dir, "spec.db")
-	if _, err := os.Stat(dbPath); err == nil {
-		return fmt.Errorf("spec.db already exists at %s", dbPath)
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	db, err := open(dbPath)
+	db, err := openGlobalDB()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if err := applySchema(db); err != nil {
+
+	pid, err := findOrCreateProject(db, dir)
+	if err != nil {
 		return err
 	}
-
-	return ensureGitignore(filepath.Join(dir, ".gitignore"), gitignoreEntries...)
+	root, err := mainWorktree(dir)
+	if err != nil {
+		return err
+	}
+	if err := ensureGitignore(filepath.Join(root, ".gitignore"), gitignoreEntries...); err != nil {
+		return err
+	}
+	return exportSpec(db, pid, filepath.Join(root, specName))
 }
 
 // ensureGitignore appends any missing entries to path, preserving existing

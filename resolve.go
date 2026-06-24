@@ -3,9 +3,58 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+// queryer is the shared surface of *sql.DB and *sql.Tx, so ordinal/cite helpers
+// work both inside and outside a transaction.
+type queryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+// openProjectContext opens the global db and resolves the current project from
+// cwd, returning the worktree-root SPEC.md path for export/check (V22, V23).
+func openProjectContext() (*sql.DB, int64, string, error) {
+	db, err := openGlobalDB()
+	if err != nil {
+		return nil, 0, "", err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		db.Close()
+		return nil, 0, "", err
+	}
+	root, err := mainWorktree(cwd)
+	if err != nil {
+		db.Close()
+		return nil, 0, "", fmt.Errorf("not in a git project: %w", err)
+	}
+	pid, err := resolveProject(db, cwd)
+	if err != nil {
+		db.Close()
+		return nil, 0, "", err
+	}
+	return db, pid, filepath.Join(root, "SPEC.md"), nil
+}
+
+// nextOrd returns the next per-project display ordinal for a durable/feature
+// table (V26): max(ord)+1 over the project's rows.
+func nextOrd(q queryer, table string, projectID int64) (int, error) {
+	var n int
+	err := q.QueryRow(`SELECT COALESCE(MAX(ord),0)+1 FROM "`+table+`" WHERE project_id=?`, projectID).Scan(&n)
+	return n, err
+}
+
+// nextTaskOrd is nextOrd for tasks, whose project is reached through feature.
+func nextTaskOrd(q queryer, projectID int64) (int, error) {
+	var n int
+	err := q.QueryRow(`SELECT COALESCE(MAX(t.ord),0)+1 FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=?`, projectID).Scan(&n)
+	return n, err
+}
 
 // gitOutput runs git in dir and returns trimmed stdout.
 func gitOutput(dir string, args ...string) (string, error) {

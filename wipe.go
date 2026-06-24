@@ -11,8 +11,8 @@ import (
 // wipeFeature deletes a feature; ON DELETE CASCADE removes its goal/constraint/
 // task rows (and their cite joins). Durable rows and other features are
 // untouched (V4).
-func wipeFeature(db *sql.DB, featureID int64) error {
-	res, err := db.Exec(`DELETE FROM feature WHERE id=?`, featureID)
+func wipeFeature(db *sql.DB, projectID, featureOrd int64) error {
+	res, err := db.Exec(`DELETE FROM feature WHERE project_id=? AND ord=?`, projectID, featureOrd)
 	if err != nil {
 		return err
 	}
@@ -21,7 +21,7 @@ func wipeFeature(db *sql.DB, featureID int64) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("no feature with id %d", featureID)
+		return fmt.Errorf("no feature %d in this project", featureOrd)
 	}
 	return nil
 }
@@ -36,8 +36,8 @@ func newWipeFeatureCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bad feature id %q", args[0])
 			}
-			return runMutation(func(db *sql.DB) (string, error) {
-				return fmt.Sprintf("wiped feature %d", id), wipeFeature(db, id)
+			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+				return fmt.Sprintf("wiped feature %d", id), wipeFeature(db, pid, id)
 			})
 		},
 	}

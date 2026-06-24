@@ -10,12 +10,13 @@ import (
 // fixture: T1 cites V1,I.init ; T2 cites V2 ; B1 fixed by V2.
 func TestRefsReverseCites(t *testing.T) {
 	db := openTestDB(t)
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
 		t.Fatalf("seedDB: %v", err)
 	}
 
 	// V2 is cited by task T2 and fixed by bug B1 → two citers, tasks before bugs
-	got, err := refsTo(db, "V2")
+	got, err := refsTo(db, pid, "V2")
 	if err != nil {
 		t.Fatalf("refs V2: %v", err)
 	}
@@ -30,7 +31,7 @@ func TestRefsReverseCites(t *testing.T) {
 	}
 
 	// I.init is cited only by T1
-	got, err = refsTo(db, "I.init")
+	got, err = refsTo(db, pid, "I.init")
 	if err != nil {
 		t.Fatalf("refs I.init: %v", err)
 	}
@@ -43,21 +44,22 @@ func TestRefsReverseCites(t *testing.T) {
 // returns no lines and no error.
 func TestRefsEmptyAndUnknown(t *testing.T) {
 	db := openTestDB(t)
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
 		t.Fatalf("seedDB: %v", err)
 	}
-	if _, err := refsTo(db, "V99"); err == nil {
+	if _, err := refsTo(db, pid, "V99"); err == nil {
 		t.Error("refs V99 succeeded, want error (unknown invariant)")
 	}
-	if _, err := refsTo(db, "T1"); err == nil {
+	if _, err := refsTo(db, pid, "T1"); err == nil {
 		t.Error("refs T1 succeeded, want error (task is not a cite target)")
 	}
 
-	id, err := addInvariant(db, "lonely")
+	id, err := addInvariant(db, pid, "lonely")
 	if err != nil {
 		t.Fatalf("addInvariant: %v", err)
 	}
-	lines, err := refsTo(db, fmt.Sprintf("V%d", id))
+	lines, err := refsTo(db, pid, fmt.Sprintf("V%d", id))
 	if err != nil {
 		t.Fatalf("refs on uncited invariant: %v", err)
 	}

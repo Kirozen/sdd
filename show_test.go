@@ -9,10 +9,11 @@ import (
 // row — both go through the same fmt*Line helpers, so no drift is possible.
 func TestShowRenderParity(t *testing.T) {
 	db := openTestDB(t)
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
 		t.Fatalf("seedDB: %v", err)
 	}
-	full, err := renderSpec(db)
+	full, err := renderSpec(db, pid)
 	if err != nil {
 		t.Fatalf("renderSpec: %v", err)
 	}
@@ -28,7 +29,7 @@ func TestShowRenderParity(t *testing.T) {
 
 	// one ref of each kind (fixtureSpec seeds them all)
 	for _, ref := range []string{"V1", "I.init", "T1", "B1", "R1"} {
-		got, err := showRef(db, ref)
+		got, err := showRef(db, pid, ref)
 		if err != nil {
 			t.Fatalf("show %s: %v", ref, err)
 		}
@@ -41,11 +42,12 @@ func TestShowRenderParity(t *testing.T) {
 // V17: an invalid query (unknown ref or bad grammar) errors instead of printing.
 func TestShowUnknownRef(t *testing.T) {
 	db := openTestDB(t)
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
 		t.Fatalf("seedDB: %v", err)
 	}
 	for _, ref := range []string{"V99", "I.nope", "T42", "B7", "R3", "Z1", "garbage"} {
-		if _, err := showRef(db, ref); err == nil {
+		if _, err := showRef(db, pid, ref); err == nil {
 			t.Errorf("show %q succeeded, want error (V17)", ref)
 		}
 	}

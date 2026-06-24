@@ -127,7 +127,7 @@ func newBackupCmd() *cobra.Command {
 		Short: "snapshot spec.db (VACUUM INTO, or --sql for a text dump)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := openProjectDB()
+			db, err := openGlobalDB() // a snapshot covers the whole global store
 			if err != nil {
 				return err
 			}

@@ -8,8 +8,9 @@ import (
 
 func TestBackupBinary(t *testing.T) {
 	db := openTestDB(t)
-	addInvariant(db, "x")
-	addInvariant(db, "y")
+	pid := mustProject(t, db)
+	addInvariant(db, pid, "x")
+	addInvariant(db, pid, "y")
 
 	dest := filepath.Join(t.TempDir(), "bak.db")
 	if err := backupBinary(db, dest); err != nil {
@@ -41,10 +42,11 @@ func TestBackupRefusesExisting(t *testing.T) {
 // the SQL dump round-trips: re-importing it into a fresh db reproduces rows.
 func TestDumpSQLRoundTrip(t *testing.T) {
 	db := openTestDB(t)
-	invID, _ := addInvariant(db, "has 'quotes' inside")
-	addInterface(db, "cmd", "init", "create db")
-	fid, _ := addFeature(db, "f")
-	addTask(db, fid, "t", []string{})
+	pid := mustProject(t, db)
+	invID, _ := addInvariant(db, pid, "has 'quotes' inside")
+	addInterface(db, pid, "cmd", "init", "create db")
+	fid, _ := addFeature(db, pid, "f")
+	addTask(db, pid, fid, "t", []string{})
 	_ = invID
 
 	dump := filepath.Join(t.TempDir(), "dump.sql")

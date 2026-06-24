@@ -8,10 +8,11 @@ import (
 // V18 + I.list: list emits, one per row, the exact lines renderSpec produces.
 func TestListRenderParity(t *testing.T) {
 	db := openTestDB(t)
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
 		t.Fatalf("seedDB: %v", err)
 	}
-	full, err := renderSpec(db)
+	full, err := renderSpec(db, pid)
 	if err != nil {
 		t.Fatalf("renderSpec: %v", err)
 	}
@@ -27,7 +28,7 @@ func TestListRenderParity(t *testing.T) {
 
 	want := map[string]int{"invariant": 2, "interface": 2, "task": 2, "bug": 1, "research": 1}
 	for kind, n := range want {
-		got, err := listKind(db, kind)
+		got, err := listKind(db, pid, kind)
 		if err != nil {
 			t.Fatalf("list %s: %v", kind, err)
 		}
@@ -45,10 +46,11 @@ func TestListRenderParity(t *testing.T) {
 // V17: an unknown kind errors; a valid-but-empty kind returns no lines, no error.
 func TestListUnknownKindAndEmpty(t *testing.T) {
 	db := openTestDB(t)
-	if _, err := listKind(db, "bogus"); err == nil {
+	pid := mustProject(t, db)
+	if _, err := listKind(db, pid, "bogus"); err == nil {
 		t.Error("list bogus succeeded, want error (V17)")
 	}
-	lines, err := listKind(db, "bug") // fresh db: no bugs
+	lines, err := listKind(db, pid, "bug") // fresh db: no bugs
 	if err != nil {
 		t.Fatalf("list bug on empty db: %v", err)
 	}

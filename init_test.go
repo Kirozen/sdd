@@ -8,29 +8,25 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := gitRepo(t)
 	if err := runInit(dir); err != nil {
 		t.Fatalf("runInit: %v", err)
 	}
 
-	// db exists with schema applied
-	db, err := open(filepath.Join(dir, "spec.db"))
+	// the repo is registered as a project in the global store
+	db, err := openGlobalDB()
 	if err != nil {
-		t.Fatalf("open: %v", err)
+		t.Fatalf("openGlobalDB: %v", err)
 	}
 	defer db.Close()
-	var uv int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&uv); err != nil {
-		t.Fatalf("read user_version: %v", err)
+	if n := count(t, db, "project"); n != 1 {
+		t.Errorf("project rows after init = %d, want 1", n)
 	}
-	if uv != userVersion {
-		t.Errorf("user_version = %d, want %d", uv, userVersion)
-	}
-	var name string
-	if err := db.QueryRow(
-		`SELECT name FROM sqlite_master WHERE type='table' AND name='invariant'`,
-	).Scan(&name); err != nil {
-		t.Errorf("schema not applied: %v", err)
+
+	// the worktree-root SPEC.md is written
+	if _, err := os.Stat(filepath.Join(dir, "SPEC.md")); err != nil {
+		t.Errorf("SPEC.md not written: %v", err)
 	}
 
 	// .gitignore has every entry
@@ -45,21 +41,32 @@ func TestInit(t *testing.T) {
 	}
 }
 
-// N2: init must not clobber an existing spec.db.
-func TestInitRefusesExisting(t *testing.T) {
-	dir := t.TempDir()
+// init is idempotent: re-running on a registered repo is a no-op find, not a
+// second project.
+func TestInitIdempotent(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := gitRepo(t)
 	if err := runInit(dir); err != nil {
 		t.Fatalf("first init: %v", err)
 	}
-	if err := runInit(dir); err == nil {
-		t.Fatal("second init succeeded; should refuse existing spec.db")
+	if err := runInit(dir); err != nil {
+		t.Fatalf("second init: %v", err)
+	}
+	db, err := openGlobalDB()
+	if err != nil {
+		t.Fatalf("openGlobalDB: %v", err)
+	}
+	defer db.Close()
+	if n := count(t, db, "project"); n != 1 {
+		t.Errorf("project rows after re-init = %d, want 1 (idempotent)", n)
 	}
 }
 
 func TestInitGitignoreAppend(t *testing.T) {
-	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := gitRepo(t)
 	gi := filepath.Join(dir, ".gitignore")
-	if err := os.WriteFile(gi, []byte("node_modules/\nspec.db\n"), 0o644); err != nil {
+	if err := os.WriteFile(gi, []byte("node_modules/\nSPEC.md\n"), 0o644); err != nil {
 		t.Fatalf("seed .gitignore: %v", err)
 	}
 
@@ -75,10 +82,7 @@ func TestInitGitignoreAppend(t *testing.T) {
 	if !strings.Contains(got, "node_modules/") {
 		t.Error("existing .gitignore content lost")
 	}
-	if strings.Count(got, "spec.db\n") != 1 {
-		t.Errorf("spec.db duplicated:\n%s", got)
-	}
-	if !strings.Contains(got, "SPEC.md") {
-		t.Error("new entry SPEC.md not appended")
+	if strings.Count(got, "SPEC.md\n") != 1 {
+		t.Errorf("SPEC.md duplicated:\n%s", got)
 	}
 }

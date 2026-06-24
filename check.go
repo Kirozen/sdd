@@ -10,8 +10,8 @@ import (
 
 // checkSpec re-renders the db and compares it byte-for-byte to the on-disk
 // SPEC.md. Any difference (hand-edit, stale cache) is a drift error (V6).
-func checkSpec(db *sql.DB, path string) error {
-	want, err := renderSpec(db)
+func checkSpec(db *sql.DB, projectID int64, path string) error {
+	want, err := renderSpec(db, projectID)
 	if err != nil {
 		return err
 	}
@@ -31,12 +31,12 @@ func newCheckCmd() *cobra.Command {
 		Short: "fail if SPEC.md drifted from spec.db",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := openProjectDB()
+			db, pid, specFile, err := openProjectContext()
 			if err != nil {
 				return err
 			}
 			defer db.Close()
-			if err := checkSpec(db, specPath); err != nil {
+			if err := checkSpec(db, pid, specFile); err != nil {
 				return err
 			}
 			cmd.Println("SPEC.md matches spec.db")

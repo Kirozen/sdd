@@ -8,10 +8,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// setTaskStatus updates a task's status. The schema CHECK rejects any value
-// outside {.,~,x} (V10); an unknown task id is an error.
-func setTaskStatus(db *sql.DB, taskID int64, status string) error {
-	res, err := db.Exec(`UPDATE task SET status=? WHERE id=?`, status, taskID)
+// setTaskStatus updates a task's status, addressing it by per-project ordinal.
+// The schema CHECK rejects any value outside {.,~,x} (V10); an unknown task is
+// an error.
+func setTaskStatus(db *sql.DB, projectID, taskOrd int64, status string) error {
+	res, err := db.Exec(`UPDATE task SET status=? WHERE ord=? AND feature_id IN (SELECT id FROM feature WHERE project_id=?)`, status, taskOrd, projectID)
 	if err != nil {
 		return err
 	}
@@ -20,7 +21,7 @@ func setTaskStatus(db *sql.DB, taskID int64, status string) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("no task with id %d", taskID)
+		return fmt.Errorf("no task T%d in this project", taskOrd)
 	}
 	return nil
 }
@@ -36,8 +37,8 @@ func newSetTaskCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bad task id %q", args[0])
 			}
-			return runMutation(func(db *sql.DB) (string, error) {
-				return fmt.Sprintf("T%d → %s", id, status), setTaskStatus(db, id, status)
+			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+				return fmt.Sprintf("T%d → %s", id, status), setTaskStatus(db, pid, id, status)
 			})
 		},
 	}

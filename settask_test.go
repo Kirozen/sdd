@@ -4,10 +4,11 @@ import "testing"
 
 func TestSetTaskStatus(t *testing.T) {
 	db := openTestDB(t)
-	fid, _ := addFeature(db, "f")
-	tid, _ := addTask(db, fid, "t", nil)
+	pid := mustProject(t, db)
+	fid, _ := addFeature(db, pid, "f")
+	tid, _ := addTask(db, pid, fid, "t", nil)
 
-	if err := setTaskStatus(db, tid, "~"); err != nil {
+	if err := setTaskStatus(db, pid, tid, "~"); err != nil {
 		t.Fatalf("setTaskStatus: %v", err)
 	}
 	var got string
@@ -20,16 +21,18 @@ func TestSetTaskStatus(t *testing.T) {
 // V10: a status outside the enum is rejected by the CHECK constraint.
 func TestSetTaskBadStatus(t *testing.T) {
 	db := openTestDB(t)
-	fid, _ := addFeature(db, "f")
-	tid, _ := addTask(db, fid, "t", nil)
-	if err := setTaskStatus(db, tid, "q"); err == nil {
+	pid := mustProject(t, db)
+	fid, _ := addFeature(db, pid, "f")
+	tid, _ := addTask(db, pid, fid, "t", nil)
+	if err := setTaskStatus(db, pid, tid, "q"); err == nil {
 		t.Error("bogus status accepted (V10)")
 	}
 }
 
 func TestSetTaskUnknown(t *testing.T) {
 	db := openTestDB(t)
-	if err := setTaskStatus(db, 999, "x"); err == nil {
+	pid := mustProject(t, db)
+	if err := setTaskStatus(db, pid, 999, "x"); err == nil {
 		t.Error("set-task on unknown id succeeded")
 	}
 }

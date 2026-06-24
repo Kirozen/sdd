@@ -10,24 +10,17 @@ import (
 )
 
 const (
-	specPath      = "SPEC.md"
+	specName      = "SPEC.md"
 	generatedHead = "<!-- GENERATED — DO NOT EDIT -->"
 )
-
-// openProjectDB opens ./spec.db, erroring if the project was not init'd.
-func openProjectDB() (*sql.DB, error) {
-	if _, err := os.Stat("spec.db"); err != nil {
-		return nil, fmt.Errorf("no spec.db here; run `sdd init` first")
-	}
-	return open("spec.db")
-}
 
 // esc escapes a literal pipe so it survives a pipe-table cell.
 func esc(s string) string { return strings.ReplaceAll(s, "|", `\|`) }
 
 // --- per-row line formatters: the single source of caveman line rendering.
 // Both renderSpec (whole sections) and `sdd show` (one row) go through these,
-// so a show line is byte-identical to its SPEC.md line (V18).
+// so a show line is byte-identical to its SPEC.md line (V18). The leading int
+// is the per-project ordinal (V26), not the global PK.
 
 func fmtInterfaceLine(kind, name, sig, status string) string {
 	mark := ""
@@ -37,48 +30,41 @@ func fmtInterfaceLine(kind, name, sig, status string) string {
 	return fmt.Sprintf("- %s: %s → %s (I.%s)%s", kind, name, sig, name, mark)
 }
 
-func fmtResearchLine(id int, topic, finding, src string) string {
-	return fmt.Sprintf("R%d|%s|%s|%s", id, esc(topic), esc(finding), esc(src))
+func fmtResearchLine(ord int, topic, finding, src string) string {
+	return fmt.Sprintf("R%d|%s|%s|%s", ord, esc(topic), esc(finding), esc(src))
 }
 
-func fmtInvariantLine(id int, text string) string {
-	return fmt.Sprintf("V%d: %s", id, text)
+func fmtInvariantLine(ord int, text string) string {
+	return fmt.Sprintf("V%d: %s", ord, text)
 }
 
-func fmtBugLine(id int, date, cause, fix string) string {
-	return fmt.Sprintf("B%d|%s|%s|%s", id, esc(date), esc(cause), fix)
+func fmtBugLine(ord int, date, cause, fix string) string {
+	return fmt.Sprintf("B%d|%s|%s|%s", ord, esc(date), esc(cause), fix)
 }
 
-func fmtTaskLine(id int, status, text, cites string) string {
-	return fmt.Sprintf("T%d|%s|%s|%s", id, status, esc(text), cites)
+func fmtTaskLine(ord int, status, text, cites string) string {
+	return fmt.Sprintf("T%d|%s|%s|%s", ord, status, esc(text), cites)
 }
 
-// renderSpec renders the whole db to the SPEC.md text. Pure function of db
-// state: every query is ORDER BY id and nothing volatile is emitted (V1, V7).
-func renderSpec(db *sql.DB) (string, error) {
+// renderSpec renders one project's slice of the db to SPEC.md text. Pure
+// function of (db, project) state: every query filters by project_id (V20),
+// orders by the per-project ordinal, and emits nothing volatile (V1, V7).
+func renderSpec(db *sql.DB, projectID int64) (string, error) {
 	var b strings.Builder
 	b.WriteString(generatedHead + "\n# SPEC\n")
 
-	if err := renderInterfaces(db, &b); err != nil {
-		return "", err
-	}
-	if err := renderResearch(db, &b); err != nil {
-		return "", err
-	}
-	if err := renderInvariants(db, &b); err != nil {
-		return "", err
-	}
-	if err := renderBugs(db, &b); err != nil {
-		return "", err
-	}
-	if err := renderFeatures(db, &b); err != nil {
-		return "", err
+	for _, render := range []func(*sql.DB, int64, *strings.Builder) error{
+		renderInterfaces, renderResearch, renderInvariants, renderBugs, renderFeatures,
+	} {
+		if err := render(db, projectID, &b); err != nil {
+			return "", err
+		}
 	}
 	return b.String(), nil
 }
 
-func renderInterfaces(db *sql.DB, b *strings.Builder) error {
-	rows, err := db.Query(`SELECT kind, name, sig, status FROM interface ORDER BY id`)
+func renderInterfaces(db *sql.DB, projectID int64, b *strings.Builder) error {
+	rows, err := db.Query(`SELECT kind, name, sig, status FROM interface WHERE project_id=? ORDER BY id`, projectID)
 	if err != nil {
 		return err
 	}
@@ -94,57 +80,58 @@ func renderInterfaces(db *sql.DB, b *strings.Builder) error {
 	return rows.Err()
 }
 
-func renderResearch(db *sql.DB, b *strings.Builder) error {
-	rows, err := db.Query(`SELECT id, topic, finding, src FROM research ORDER BY id`)
+func renderResearch(db *sql.DB, projectID int64, b *strings.Builder) error {
+	rows, err := db.Query(`SELECT ord, topic, finding, src FROM research WHERE project_id=? ORDER BY ord`, projectID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	b.WriteString("\n## §R RESEARCH\nid|topic|finding|src\n")
 	for rows.Next() {
-		var id int
+		var ord int
 		var topic, finding, src string
-		if err := rows.Scan(&id, &topic, &finding, &src); err != nil {
+		if err := rows.Scan(&ord, &topic, &finding, &src); err != nil {
 			return err
 		}
-		fmt.Fprintln(b, fmtResearchLine(id, topic, finding, src))
+		fmt.Fprintln(b, fmtResearchLine(ord, topic, finding, src))
 	}
 	return rows.Err()
 }
 
-func renderInvariants(db *sql.DB, b *strings.Builder) error {
-	rows, err := db.Query(`SELECT id, text FROM invariant ORDER BY id`)
+func renderInvariants(db *sql.DB, projectID int64, b *strings.Builder) error {
+	rows, err := db.Query(`SELECT ord, text FROM invariant WHERE project_id=? ORDER BY ord`, projectID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	b.WriteString("\n## §V INVARIANTS\n")
 	for rows.Next() {
-		var id int
+		var ord int
 		var text string
-		if err := rows.Scan(&id, &text); err != nil {
+		if err := rows.Scan(&ord, &text); err != nil {
 			return err
 		}
-		fmt.Fprintln(b, fmtInvariantLine(id, text))
+		fmt.Fprintln(b, fmtInvariantLine(ord, text))
 	}
 	return rows.Err()
 }
 
-func renderBugs(db *sql.DB, b *strings.Builder) error {
-	rows, err := db.Query(`SELECT id, date, cause FROM bug ORDER BY id`)
+func renderBugs(db *sql.DB, projectID int64, b *strings.Builder) error {
+	rows, err := db.Query(`SELECT id, ord, date, cause FROM bug WHERE project_id=? ORDER BY ord`, projectID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	b.WriteString("\n## §B BUGS\nid|date|cause|fix\n")
 	type bug struct {
-		id          int
+		pk          int64
+		ord         int
 		date, cause string
 	}
 	var bugs []bug
 	for rows.Next() {
 		var bg bug
-		if err := rows.Scan(&bg.id, &bg.date, &bg.cause); err != nil {
+		if err := rows.Scan(&bg.pk, &bg.ord, &bg.date, &bg.cause); err != nil {
 			return err
 		}
 		bugs = append(bugs, bg)
@@ -153,28 +140,29 @@ func renderBugs(db *sql.DB, b *strings.Builder) error {
 		return err
 	}
 	for _, bg := range bugs {
-		fix, err := bugFix(db, bg.id)
+		fix, err := bugFix(db, bg.pk)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(b, fmtBugLine(bg.id, bg.date, bg.cause, fix))
+		fmt.Fprintln(b, fmtBugLine(bg.ord, bg.date, bg.cause, fix))
 	}
 	return nil
 }
 
-func bugFix(db *sql.DB, bugID int) (string, error) {
-	rows, err := db.Query(`SELECT inv_id FROM bug_fix WHERE bug_id=? ORDER BY inv_id`, bugID)
+// bugFix renders a bug's fix links as the cited invariants' per-project ords.
+func bugFix(db *sql.DB, bugPK int64) (string, error) {
+	rows, err := db.Query(`SELECT i.ord FROM bug_fix j JOIN invariant i ON i.id=j.inv_id WHERE j.bug_id=? ORDER BY i.ord`, bugPK)
 	if err != nil {
 		return "", err
 	}
 	defer rows.Close()
 	var parts []string
 	for rows.Next() {
-		var n int
-		if err := rows.Scan(&n); err != nil {
+		var ord int
+		if err := rows.Scan(&ord); err != nil {
 			return "", err
 		}
-		parts = append(parts, fmt.Sprintf("V%d", n))
+		parts = append(parts, fmt.Sprintf("V%d", ord))
 	}
 	if err := rows.Err(); err != nil {
 		return "", err
@@ -185,20 +173,21 @@ func bugFix(db *sql.DB, bugID int) (string, error) {
 	return strings.Join(parts, ","), nil
 }
 
-func renderFeatures(db *sql.DB, b *strings.Builder) error {
-	rows, err := db.Query(`SELECT id, name FROM feature ORDER BY id`)
+func renderFeatures(db *sql.DB, projectID int64, b *strings.Builder) error {
+	rows, err := db.Query(`SELECT id, ord, name FROM feature WHERE project_id=? ORDER BY ord`, projectID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	type feat struct {
-		id   int
+		pk   int64
+		ord  int
 		name string
 	}
 	var feats []feat
 	for rows.Next() {
 		var f feat
-		if err := rows.Scan(&f.id, &f.name); err != nil {
+		if err := rows.Scan(&f.pk, &f.ord, &f.name); err != nil {
 			return err
 		}
 		feats = append(feats, f)
@@ -208,14 +197,14 @@ func renderFeatures(db *sql.DB, b *strings.Builder) error {
 	}
 
 	for _, f := range feats {
-		fmt.Fprintf(b, "\n## FEATURE %d: %s\n", f.id, f.name)
-		if err := renderTextList(db, b, "### §G GOAL", `SELECT text FROM goal WHERE feature_id=? ORDER BY id`, f.id, false); err != nil {
+		fmt.Fprintf(b, "\n## FEATURE %d: %s\n", f.ord, f.name)
+		if err := renderTextList(db, b, "### §G GOAL", `SELECT text FROM goal WHERE feature_id=? ORDER BY id`, f.pk, false); err != nil {
 			return err
 		}
-		if err := renderTextList(db, b, "### §C CONSTRAINTS", `SELECT text FROM "constraint" WHERE feature_id=? ORDER BY id`, f.id, true); err != nil {
+		if err := renderTextList(db, b, "### §C CONSTRAINTS", `SELECT text FROM "constraint" WHERE feature_id=? ORDER BY id`, f.pk, true); err != nil {
 			return err
 		}
-		if err := renderTasks(db, b, f.id); err != nil {
+		if err := renderTasks(db, b, f.pk); err != nil {
 			return err
 		}
 	}
@@ -223,8 +212,8 @@ func renderFeatures(db *sql.DB, b *strings.Builder) error {
 }
 
 // renderTextList writes a header then each row's text, as bullets if bullet.
-func renderTextList(db *sql.DB, b *strings.Builder, header, query string, featureID int, bullet bool) error {
-	rows, err := db.Query(query, featureID)
+func renderTextList(db *sql.DB, b *strings.Builder, header, query string, featurePK int64, bullet bool) error {
+	rows, err := db.Query(query, featurePK)
 	if err != nil {
 		return err
 	}
@@ -244,20 +233,21 @@ func renderTextList(db *sql.DB, b *strings.Builder, header, query string, featur
 	return rows.Err()
 }
 
-func renderTasks(db *sql.DB, b *strings.Builder, featureID int) error {
-	rows, err := db.Query(`SELECT id, status, text FROM task WHERE feature_id=? ORDER BY id`, featureID)
+func renderTasks(db *sql.DB, b *strings.Builder, featurePK int64) error {
+	rows, err := db.Query(`SELECT id, ord, status, text FROM task WHERE feature_id=? ORDER BY ord`, featurePK)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	type tk struct {
-		id            int
-		status, text  string
+		pk           int64
+		ord          int
+		status, text string
 	}
 	var tasks []tk
 	for rows.Next() {
 		var t tk
-		if err := rows.Scan(&t.id, &t.status, &t.text); err != nil {
+		if err := rows.Scan(&t.pk, &t.ord, &t.status, &t.text); err != nil {
 			return err
 		}
 		tasks = append(tasks, t)
@@ -267,36 +257,37 @@ func renderTasks(db *sql.DB, b *strings.Builder, featureID int) error {
 	}
 	b.WriteString("### §T TASKS\nid|status|task|cites\n")
 	for _, t := range tasks {
-		cites, err := taskCites(db, t.id)
+		cites, err := taskCites(db, t.pk)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(b, fmtTaskLine(t.id, t.status, t.text, cites))
+		fmt.Fprintln(b, fmtTaskLine(t.ord, t.status, t.text, cites))
 	}
 	return nil
 }
 
-// taskCites re-joins the typed cite tables into "V1,I.init" form, ordered.
-func taskCites(db *sql.DB, taskID int) (string, error) {
+// taskCites re-joins the typed cite tables into "V1,I.init" form: invariants by
+// their per-project ord, interfaces by name. Ordered.
+func taskCites(db *sql.DB, taskPK int64) (string, error) {
 	var parts []string
-	ir, err := db.Query(`SELECT inv_id FROM task_cites_inv WHERE task_id=? ORDER BY inv_id`, taskID)
+	ir, err := db.Query(`SELECT i.ord FROM task_cites_inv j JOIN invariant i ON i.id=j.inv_id WHERE j.task_id=? ORDER BY i.ord`, taskPK)
 	if err != nil {
 		return "", err
 	}
 	for ir.Next() {
-		var n int
-		if err := ir.Scan(&n); err != nil {
+		var ord int
+		if err := ir.Scan(&ord); err != nil {
 			ir.Close()
 			return "", err
 		}
-		parts = append(parts, fmt.Sprintf("V%d", n))
+		parts = append(parts, fmt.Sprintf("V%d", ord))
 	}
 	ir.Close()
 	if err := ir.Err(); err != nil {
 		return "", err
 	}
 
-	fr, err := db.Query(`SELECT i.name FROM task_cites_iface j JOIN interface i ON i.id=j.iface_id WHERE j.task_id=? ORDER BY i.id`, taskID)
+	fr, err := db.Query(`SELECT i.name FROM task_cites_iface j JOIN interface i ON i.id=j.iface_id WHERE j.task_id=? ORDER BY i.id`, taskPK)
 	if err != nil {
 		return "", err
 	}
@@ -319,10 +310,10 @@ func taskCites(db *sql.DB, taskID int) (string, error) {
 	return strings.Join(parts, ","), nil
 }
 
-// exportSpec renders the db and atomically replaces SPEC.md (write temp +
-// rename, V8). The temp file shares the dir so rename stays on one filesystem.
-func exportSpec(db *sql.DB, path string) error {
-	content, err := renderSpec(db)
+// exportSpec renders the project and atomically replaces SPEC.md at path (write
+// temp + rename, V8).
+func exportSpec(db *sql.DB, projectID int64, path string) error {
+	content, err := renderSpec(db, projectID)
 	if err != nil {
 		return err
 	}
@@ -340,15 +331,15 @@ func exportSpec(db *sql.DB, path string) error {
 func newExportCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "export",
-		Short: "regenerate SPEC.md from spec.db",
+		Short: "regenerate the current project's SPEC.md from the global db",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			db, err := openProjectDB()
+			db, pid, specFile, err := openProjectContext()
 			if err != nil {
 				return err
 			}
 			defer db.Close()
-			return exportSpec(db, specPath)
+			return exportSpec(db, pid, specFile)
 		},
 	}
 }

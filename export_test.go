@@ -8,36 +8,39 @@ import (
 	"testing"
 )
 
-// seedSpec inserts one of each kind, wiring a task that cites both an invariant
-// and an interface so the re-join path is exercised.
-func seedSpec(t *testing.T, db *sql.DB) {
+// seedSpec inserts one of each kind into a fresh project, wiring a task that
+// cites both an invariant and an interface so the re-join path is exercised.
+// Returns the project id to scope render/export/check.
+func seedSpec(t *testing.T, db *sql.DB) int64 {
 	t.Helper()
+	pid := mustProject(t, db)
 	exec := func(q string, a ...any) {
 		t.Helper()
 		if _, err := db.Exec(q, a...); err != nil {
 			t.Fatalf("seed %q: %v", q, err)
 		}
 	}
-	exec(`INSERT INTO invariant(id, text) VALUES(1, 'auth check before handler')`)
-	exec(`INSERT INTO interface(id, kind, name, sig) VALUES(1, 'cmd', 'init', 'create db')`)
-	exec(`INSERT INTO feature(id, name) VALUES(7, 'auth-login')`)
+	exec(`INSERT INTO invariant(id, project_id, ord, text) VALUES(1, ?, 1, 'auth check before handler')`, pid)
+	exec(`INSERT INTO interface(id, project_id, kind, name, sig) VALUES(1, ?, 'cmd', 'init', 'create db')`, pid)
+	exec(`INSERT INTO feature(id, project_id, ord, name) VALUES(7, ?, 1, 'auth-login')`, pid)
 	exec(`INSERT INTO goal(feature_id, text) VALUES(7, 'login JWT')`)
 	exec(`INSERT INTO "constraint"(feature_id, text) VALUES(7, 'tokens expire')`)
-	exec(`INSERT INTO task(id, feature_id, text, status) VALUES(1, 7, 'impl mw', 'x')`)
+	exec(`INSERT INTO task(id, feature_id, ord, text, status) VALUES(1, 7, 1, 'impl mw', 'x')`)
 	exec(`INSERT INTO task_cites_inv(task_id, inv_id) VALUES(1, 1)`)
 	exec(`INSERT INTO task_cites_iface(task_id, iface_id) VALUES(1, 1)`)
+	return pid
 }
 
 // V1, V7: render is a deterministic, volatile-free function of db state.
 func TestExportDeterministic(t *testing.T) {
 	db := openTestDB(t)
-	seedSpec(t, db)
+	pid := seedSpec(t, db)
 
-	first, err := renderSpec(db)
+	first, err := renderSpec(db, pid)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	second, err := renderSpec(db)
+	second, err := renderSpec(db, pid)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -49,7 +52,8 @@ func TestExportDeterministic(t *testing.T) {
 // V3: the generated header marks the file do-not-edit.
 func TestExportHeader(t *testing.T) {
 	db := openTestDB(t)
-	out, err := renderSpec(db)
+	pid := mustProject(t, db)
+	out, err := renderSpec(db, pid)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -61,8 +65,8 @@ func TestExportHeader(t *testing.T) {
 // cites re-join from the typed tables into V1,I.init form.
 func TestExportCitesRejoin(t *testing.T) {
 	db := openTestDB(t)
-	seedSpec(t, db)
-	out, err := renderSpec(db)
+	pid := seedSpec(t, db)
+	out, err := renderSpec(db, pid)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -74,18 +78,18 @@ func TestExportCitesRejoin(t *testing.T) {
 // V8: export atomically replaces the file and leaves no temp behind.
 func TestExportAtomic(t *testing.T) {
 	db := openTestDB(t)
-	seedSpec(t, db)
+	pid := seedSpec(t, db)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "SPEC.md")
 
-	if err := exportSpec(db, path); err != nil {
+	if err := exportSpec(db, pid, path); err != nil {
 		t.Fatalf("exportSpec: %v", err)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read export: %v", err)
 	}
-	want, _ := renderSpec(db)
+	want, _ := renderSpec(db, pid)
 	if string(got) != want {
 		t.Error("exported file != render output")
 	}

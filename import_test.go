@@ -39,7 +39,8 @@ T2|.|test it|V2
 
 func TestImportParsesFixture(t *testing.T) {
 	db := openTestDB(t)
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
 		t.Fatalf("seedDB: %v", err)
 	}
 
@@ -75,10 +76,11 @@ func TestImportParsesFixture(t *testing.T) {
 // V13: import refuses a non-empty db without --force.
 func TestImportRefusesNonEmpty(t *testing.T) {
 	db := openTestDB(t)
-	if _, err := addInvariant(db, "existing"); err != nil {
+	pid := mustProject(t, db)
+	if _, err := addInvariant(db, pid, "existing"); err != nil {
 		t.Fatalf("seed existing: %v", err)
 	}
-	empty, _ := dbEmpty(db)
+	empty, _ := dbEmpty(db, pid)
 	if empty {
 		t.Fatal("db reported empty after an insert")
 	}
@@ -88,17 +90,18 @@ func TestImportRefusesNonEmpty(t *testing.T) {
 // V13: --force reseeds, replacing prior data.
 func TestImportForceReseed(t *testing.T) {
 	db := openTestDB(t)
-	addInvariant(db, "stale one")
-	addInvariant(db, "stale two")
+	pid := mustProject(t, db)
+	addInvariant(db, pid, "stale one")
+	addInvariant(db, pid, "stale two")
 
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", true); err != nil {
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", true); err != nil {
 		t.Fatalf("force reseed: %v", err)
 	}
 	if n := count(t, db, "invariant"); n != 2 {
 		t.Errorf("invariant = %d, want 2 (stale data not cleared)", n)
 	}
 	var text string
-	db.QueryRow(`SELECT text FROM invariant WHERE id=1`).Scan(&text)
+	db.QueryRow(`SELECT text FROM invariant WHERE project_id=? AND ord=1`, pid).Scan(&text)
 	if text != "always check auth" {
 		t.Errorf("invariant 1 = %q, want imported value", text)
 	}
@@ -107,8 +110,9 @@ func TestImportForceReseed(t *testing.T) {
 // V14: a cite to a missing invariant rolls the whole import back.
 func TestImportAtomicRollback(t *testing.T) {
 	db := openTestDB(t)
+	pid := mustProject(t, db)
 	bad := strings.Replace(fixtureSpec, "T2|.|test it|V2", "T2|.|test it|V99", 1)
-	if err := seedDB(db, parseSpec(bad), "f", false); err == nil {
+	if err := seedDB(db, pid, parseSpec(bad), "f", false); err == nil {
 		t.Fatal("import with orphan cite succeeded")
 	}
 	for _, tbl := range []string{"invariant", "interface", "feature", "task", "bug"} {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -12,28 +13,12 @@ import (
 // read re-exported, SPEC.md bytes change; if a read mutated the db without
 // re-exporting, `check` fails (db ≠ frozen SPEC.md). Passing both ⇒ no write.
 func TestReadCommandsArePure(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if err := runInit("."); err != nil {
-		t.Fatalf("init: %v", err)
-	}
-	db, err := openProjectDB()
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := seedDB(db, parseSpec(fixtureSpec), "f", false); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := exportSpec(db, specPath); err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	db.Close()
-
-	before, err := os.ReadFile(specPath)
-	if err != nil {
-		t.Fatalf("read SPEC.md: %v", err)
-	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := gitRepo(t)
+	t.Chdir(dir)
 
 	run := func(args ...string) {
+		t.Helper()
 		root := newRootCmd()
 		root.SetArgs(args)
 		root.SetOut(&bytes.Buffer{})
@@ -42,12 +27,26 @@ func TestReadCommandsArePure(t *testing.T) {
 			t.Fatalf("cmd %v: %v", args, err)
 		}
 	}
+
+	// init registers the project + writes SPEC.md; then build a small spec.
+	run("init")
+	run("add-invariant", "always check auth")
+	run("add-interface", "cmd", "init", "create db")
+	run("new-feature", "f")
+	run("add-task", "build it", "--feature", "1", "--cites", "V1,I.init")
+
+	spec := filepath.Join(dir, "SPEC.md")
+	before, err := os.ReadFile(spec)
+	if err != nil {
+		t.Fatalf("read SPEC.md: %v", err)
+	}
+
 	run("show", "V1")
 	run("list", "task")
 	run("refs", "V1")
 	run("status")
 
-	after, err := os.ReadFile(specPath)
+	after, err := os.ReadFile(spec)
 	if err != nil {
 		t.Fatalf("re-read SPEC.md: %v", err)
 	}
@@ -55,12 +54,6 @@ func TestReadCommandsArePure(t *testing.T) {
 		t.Error("a read command re-exported SPEC.md (V16: reads must not re-export)")
 	}
 
-	db2, err := openProjectDB()
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer db2.Close()
-	if err := checkSpec(db2, specPath); err != nil {
-		t.Errorf("check fails after reads — a read mutated the db (V16): %v", err)
-	}
+	// check fails if a read mutated the db (db ≠ frozen SPEC.md).
+	run("check")
 }
