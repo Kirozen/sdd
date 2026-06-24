@@ -27,6 +27,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newWipeFeatureCmd())
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newBackupCmd())
+	root.AddCommand(newSetTaskCmd())
 	return root
 }
 
