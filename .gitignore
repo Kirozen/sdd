@@ -1,0 +1,4 @@
+/sdd
+*.db
+*.db-wal
+*.db-shm
