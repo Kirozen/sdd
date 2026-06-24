@@ -25,6 +25,34 @@ func openProjectDB() (*sql.DB, error) {
 // esc escapes a literal pipe so it survives a pipe-table cell.
 func esc(s string) string { return strings.ReplaceAll(s, "|", `\|`) }
 
+// --- per-row line formatters: the single source of caveman line rendering.
+// Both renderSpec (whole sections) and `sdd show` (one row) go through these,
+// so a show line is byte-identical to its SPEC.md line (V18).
+
+func fmtInterfaceLine(kind, name, sig, status string) string {
+	mark := ""
+	if status == "deprecated" {
+		mark = " [deprecated]"
+	}
+	return fmt.Sprintf("- %s: %s → %s (I.%s)%s", kind, name, sig, name, mark)
+}
+
+func fmtResearchLine(id int, topic, finding, src string) string {
+	return fmt.Sprintf("R%d|%s|%s|%s", id, esc(topic), esc(finding), esc(src))
+}
+
+func fmtInvariantLine(id int, text string) string {
+	return fmt.Sprintf("V%d: %s", id, text)
+}
+
+func fmtBugLine(id int, date, cause, fix string) string {
+	return fmt.Sprintf("B%d|%s|%s|%s", id, esc(date), esc(cause), fix)
+}
+
+func fmtTaskLine(id int, status, text, cites string) string {
+	return fmt.Sprintf("T%d|%s|%s|%s", id, status, esc(text), cites)
+}
+
 // renderSpec renders the whole db to the SPEC.md text. Pure function of db
 // state: every query is ORDER BY id and nothing volatile is emitted (V1, V7).
 func renderSpec(db *sql.DB) (string, error) {
@@ -61,11 +89,7 @@ func renderInterfaces(db *sql.DB, b *strings.Builder) error {
 		if err := rows.Scan(&kind, &name, &sig, &status); err != nil {
 			return err
 		}
-		mark := ""
-		if status == "deprecated" {
-			mark = " [deprecated]"
-		}
-		fmt.Fprintf(b, "- %s: %s → %s (I.%s)%s\n", kind, name, sig, name, mark)
+		fmt.Fprintln(b, fmtInterfaceLine(kind, name, sig, status))
 	}
 	return rows.Err()
 }
@@ -83,7 +107,7 @@ func renderResearch(db *sql.DB, b *strings.Builder) error {
 		if err := rows.Scan(&id, &topic, &finding, &src); err != nil {
 			return err
 		}
-		fmt.Fprintf(b, "R%d|%s|%s|%s\n", id, esc(topic), esc(finding), esc(src))
+		fmt.Fprintln(b, fmtResearchLine(id, topic, finding, src))
 	}
 	return rows.Err()
 }
@@ -101,7 +125,7 @@ func renderInvariants(db *sql.DB, b *strings.Builder) error {
 		if err := rows.Scan(&id, &text); err != nil {
 			return err
 		}
-		fmt.Fprintf(b, "V%d: %s\n", id, text)
+		fmt.Fprintln(b, fmtInvariantLine(id, text))
 	}
 	return rows.Err()
 }
@@ -133,7 +157,7 @@ func renderBugs(db *sql.DB, b *strings.Builder) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(b, "B%d|%s|%s|%s\n", bg.id, esc(bg.date), esc(bg.cause), fix)
+		fmt.Fprintln(b, fmtBugLine(bg.id, bg.date, bg.cause, fix))
 	}
 	return nil
 }
@@ -247,7 +271,7 @@ func renderTasks(db *sql.DB, b *strings.Builder, featureID int) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(b, "T%d|%s|%s|%s\n", t.id, t.status, esc(t.text), cites)
+		fmt.Fprintln(b, fmtTaskLine(t.id, t.status, t.text, cites))
 	}
 	return nil
 }

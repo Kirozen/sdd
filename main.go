@@ -32,6 +32,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newEditCmd())
 	root.AddCommand(newDeprecateInterfaceCmd())
 	root.AddCommand(newImportCmd())
+	root.AddCommand(newShowCmd())
 	return root
 }
 
