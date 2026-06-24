@@ -10,11 +10,13 @@ import (
 var version = "0.0.1"
 
 func newRootCmd() *cobra.Command {
-	return &cobra.Command{
+	root := &cobra.Command{
 		Use:     "sdd",
 		Short:   "spec-driven-dev: SQLite-backed spec engine",
 		Version: version,
 	}
+	root.AddCommand(newInitCmd())
+	return root
 }
 
 func main() {
