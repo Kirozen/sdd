@@ -33,6 +33,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newDeprecateInterfaceCmd())
 	root.AddCommand(newImportCmd())
 	root.AddCommand(newShowCmd())
+	root.AddCommand(newListCmd())
 	return root
 }
 
