@@ -57,6 +57,25 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 	}
 }
 
+// listAllKinds is the canonical order `list` (no kind) walks — the same order
+// renderSpec emits sections (V28): interfaces, research, invariants, bugs, then
+// features and their tasks.
+var listAllKinds = []string{"interface", "research", "invariant", "bug", "feature", "task"}
+
+// listAll concatenates listKind over listAllKinds, so every emitted line is
+// byte-identical to its single-kind `list <kind>` line (V28, V18).
+func listAll(db *sql.DB, projectID int64) ([]string, error) {
+	var out []string
+	for _, kind := range listAllKinds {
+		lines, err := listKind(db, projectID, kind)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, lines...)
+	}
+	return out, nil
+}
+
 // listRows runs query (scoped to projectID) and maps each row to a line via fn.
 func listRows(db *sql.DB, query string, projectID int64, fn func(*sql.Rows) (string, error)) ([]string, error) {
 	rows, err := db.Query(query, projectID)
@@ -147,16 +166,21 @@ func listBugs(db *sql.DB, projectID int64) ([]string, error) {
 
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <kind>",
-		Short: "print all rows of a kind (invariant|interface|task|bug|research|feature), read-only",
-		Args:  cobra.ExactArgs(1),
+		Use:   "list [kind]",
+		Short: "print all rows of a kind (invariant|interface|task|bug|research|feature), or every kind if omitted; read-only",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			db, pid, _, err := openProjectContext()
 			if err != nil {
 				return err
 			}
 			defer db.Close()
-			lines, err := listKind(db, pid, args[0])
+			var lines []string
+			if len(args) == 0 {
+				lines, err = listAll(db, pid)
+			} else {
+				lines, err = listKind(db, pid, args[0])
+			}
 			if err != nil {
 				return err
 			}

@@ -43,6 +43,39 @@ func TestListRenderParity(t *testing.T) {
 	}
 }
 
+// V28: list with no kind emits every kind in canonical order, each line
+// byte-identical to its single-kind list. Building the expectation by walking
+// listAllKinds and concatenating listKind makes any order/inclusion/rendering
+// drift fail.
+func TestListAllCanonicalOrder(t *testing.T) {
+	db := openTestDB(t)
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
+		t.Fatalf("seedDB: %v", err)
+	}
+
+	var want []string
+	for _, kind := range listAllKinds {
+		lines, err := listKind(db, pid, kind)
+		if err != nil {
+			t.Fatalf("list %s: %v", kind, err)
+		}
+		want = append(want, lines...)
+	}
+
+	got, err := listAll(db, pid)
+	if err != nil {
+		t.Fatalf("listAll: %v", err)
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("listAll mismatch (V28):\n got=%q\nwant=%q", got, want)
+	}
+	// guard the canonical order itself: interface rows before task rows
+	if got[0] != want[0] || len(got) == 0 {
+		t.Errorf("listAll first line = %q, want %q (interfaces lead)", got[0], want[0])
+	}
+}
+
 // V17: an unknown kind errors; a valid-but-empty kind returns no lines, no error.
 func TestListUnknownKindAndEmpty(t *testing.T) {
 	db := openTestDB(t)
