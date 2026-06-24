@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -73,6 +74,90 @@ func TestListAllCanonicalOrder(t *testing.T) {
 	// guard the canonical order itself: interface rows before task rows
 	if got[0] != want[0] || len(got) == 0 {
 		t.Errorf("listAll first line = %q, want %q (interfaces lead)", got[0], want[0])
+	}
+}
+
+// V29: --pretty renders a grouped human view — a header per kind, tasks nested
+// under their feature, and no pipe-delimited machine rows. The default listAll
+// output stays raw (V28).
+func TestListPrettyGroupedNoPipes(t *testing.T) {
+	db := openTestDB(t)
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
+		t.Fatalf("seedDB: %v", err)
+	}
+	got, err := listPretty(db, pid)
+	if err != nil {
+		t.Fatalf("listPretty: %v", err)
+	}
+	joined := strings.Join(got, "\n")
+
+	for _, h := range []string{"INTERFACES", "RESEARCH", "INVARIANTS", "BUGS", "FEATURE 1"} {
+		if !slices.ContainsFunc(got, func(l string) bool { return strings.HasPrefix(l, h) }) {
+			t.Errorf("pretty view missing header %q:\n%s", h, joined)
+		}
+	}
+
+	// no machine pipe row survives: none of the raw listAll lines that carry a
+	// pipe delimiter appear verbatim in the pretty view (parity deliberately
+	// broken under the flag).
+	raw, err := listAll(db, pid)
+	if err != nil {
+		t.Fatalf("listAll: %v", err)
+	}
+	for _, r := range raw {
+		if strings.Contains(r, "|") && slices.Contains(got, r) {
+			t.Errorf("pretty view leaked a raw pipe row: %q", r)
+		}
+	}
+
+	// a task row sits indented AFTER its feature header and BEFORE the next one.
+	featAt, taskAt := -1, -1
+	for i, l := range got {
+		if strings.HasPrefix(l, "FEATURE 1") {
+			featAt = i
+		}
+		if featAt >= 0 && taskAt < 0 && strings.HasPrefix(l, "  T") {
+			taskAt = i
+			break
+		}
+	}
+	if featAt < 0 || taskAt < 0 || taskAt <= featAt {
+		t.Errorf("tasks not nested under their feature (feat@%d task@%d):\n%s", featAt, taskAt, joined)
+	}
+}
+
+// V28: --pretty is opt-in; the default listAll path is byte-for-byte unchanged.
+func TestListPrettyLeavesDefaultRaw(t *testing.T) {
+	db := openTestDB(t)
+	pid := mustProject(t, db)
+	if err := seedDB(db, pid, parseSpec(fixtureSpec), "f", false); err != nil {
+		t.Fatalf("seedDB: %v", err)
+	}
+	raw, err := listAll(db, pid)
+	if err != nil {
+		t.Fatalf("listAll: %v", err)
+	}
+	// the default still concatenates the canonical per-kind lines (the V28 contract)
+	var want []string
+	for _, kind := range listAllKinds {
+		lines, _ := listKind(db, pid, kind)
+		want = append(want, lines...)
+	}
+	if strings.Join(raw, "\n") != strings.Join(want, "\n") {
+		t.Errorf("default list changed by pretty work (V28 regressed)")
+	}
+}
+
+// V29 guard: --pretty combined with a kind argument errors instead of silently
+// ignoring the flag.
+func TestListPrettyWithKindErrors(t *testing.T) {
+	cmd := newListCmd()
+	cmd.SetArgs([]string{"task", "--pretty"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err == nil {
+		t.Error("list task --pretty succeeded, want error (V29: --pretty is no-kind only)")
 	}
 }
 
