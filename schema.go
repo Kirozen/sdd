@@ -8,7 +8,8 @@ import (
 // userVersion anchors schema migrations (V9). Bumped per migration script.
 // v2 adds the global project scope (project table + project_id) and per-project
 // display ordinals (ord). v3 adds the unknown table (parked grill questions).
-const userVersion = 3
+// v4 adds the test table (invariant ↔ proving test, V42).
+const userVersion = 4
 
 // schemaDDL is the full v2 schema: a global project layer (each row scoped to a
 // project), a durable layer that persists across features, an ephemeral feature
@@ -114,13 +115,40 @@ CREATE TABLE unknown (
 );
 `
 
+// testDDL is the v4 addition (V42): a durable link from an invariant to a test
+// that proves it. UNIQUE(invariant_id, name) makes re-adding the same pair a
+// no-op rather than a silent duplicate; one test name may guard several
+// invariants (distinct rows). Kept as its own constant so the fresh path
+// (applySchema) and the migration path build byte-identical tables (V45).
+const testDDL = `
+CREATE TABLE test (
+	id           INTEGER PRIMARY KEY,
+	invariant_id INTEGER NOT NULL REFERENCES invariant(id) ON DELETE CASCADE,
+	name         TEXT NOT NULL,
+	UNIQUE (invariant_id, name)
+);
+`
+
+// migrations maps each schema version > 2 to its additive DDL step. The same
+// constants feed both applySchema (fresh) and migrate (upgrade), so a fresh db
+// is byte-identical to a migrated one by construction (V45). To add a version,
+// bump userVersion and add one entry — nothing else.
+var migrations = map[int]string{
+	3: unknownDDL,
+	4: testDDL,
+}
+
 // applySchema creates all tables and stamps user_version (V9 migration anchor).
+// It lays the base schema then every additive step in version order, so a fresh
+// db carries exactly what a fully-migrated one does (V45).
 func applySchema(db *sql.DB) error {
 	if _, err := db.Exec(schemaDDL); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
-	if _, err := db.Exec(unknownDDL); err != nil {
-		return fmt.Errorf("apply schema (unknown): %w", err)
+	for v := 3; v <= userVersion; v++ {
+		if _, err := db.Exec(migrations[v]); err != nil {
+			return fmt.Errorf("apply schema (v%d): %w", v, err)
+		}
 	}
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d;", userVersion)); err != nil {
 		return fmt.Errorf("set user_version: %w", err)
@@ -128,31 +156,34 @@ func applySchema(db *sql.DB) error {
 	return nil
 }
 
-// migrate brings a db at the given user_version up to the current one (V36).
-// uv==0 is a freshly created file → full schema. uv==2 → the additive v3 step.
-// uv==3 is already current → no-op. Any other version is unsupported and errors
-// rather than risk a blind half-migration (V36, cf V23 clear-error).
+// migrate brings a db at user_version uv up to the current one (V45). uv==0 is a
+// fresh file → full schema. uv==1 (pre-project-scope, only the one-off SQL ever
+// migrated it) and uv>userVersion (a db written by a newer binary) are
+// unsupported and error rather than risk a blind half-migration (cf V23). Any
+// other uv loops uv+1..userVersion, applying each step's DDL and stamping THAT
+// literal version — never the moving userVersion constant, which would jump the
+// version forward and skip later steps. So a v2 db chains 2→3→4.
 func migrate(db *sql.DB, uv int) error {
-	switch uv {
-	case 0:
+	if uv == 0 {
 		return applySchema(db)
-	case 2:
-		return migrateV3(db)
-	case userVersion:
+	}
+	if uv == userVersion {
 		return nil
-	default:
-		return fmt.Errorf("unsupported db user_version %d (want 0, 2, or %d)", uv, userVersion)
 	}
-}
-
-// migrateV3 is the additive v2→v3 step: create the unknown table from the same
-// DDL a fresh db uses (V36) and stamp the version. No existing row is touched.
-func migrateV3(db *sql.DB) error {
-	if _, err := db.Exec(unknownDDL); err != nil {
-		return fmt.Errorf("migrate v3 (unknown): %w", err)
+	if uv == 1 || uv > userVersion {
+		return fmt.Errorf("unsupported db user_version %d (want 0, or 2..%d)", uv, userVersion)
 	}
-	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d;", userVersion)); err != nil {
-		return fmt.Errorf("migrate v3 (stamp): %w", err)
+	for v := uv + 1; v <= userVersion; v++ {
+		ddl, ok := migrations[v]
+		if !ok {
+			return fmt.Errorf("no migration step to v%d", v)
+		}
+		if _, err := db.Exec(ddl); err != nil {
+			return fmt.Errorf("migrate v%d: %w", v, err)
+		}
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d;", v)); err != nil {
+			return fmt.Errorf("migrate v%d (stamp): %w", v, err)
+		}
 	}
 	return nil
 }

@@ -100,16 +100,65 @@ func TestMigratePreservesRows(t *testing.T) {
 	}
 }
 
-// V36: migrate is a no-op at the current version and refuses unsupported ones
-// rather than half-migrating.
+// V45: migrate is a no-op at the current version and refuses unsupported ones
+// (uv==1 pre-scope, uv>userVersion from a newer binary) rather than
+// half-migrating. uv∈[2,userVersion) are valid chain starts (proven separately
+// against a real v2 db, which a full db cannot stand in for).
 func TestMigrateVersionGuards(t *testing.T) {
 	db := openTestDB(t) // already at userVersion
 	if err := migrate(db, userVersion); err != nil {
 		t.Errorf("migrate at current version should be a no-op, got %v", err)
 	}
-	for _, bad := range []int{1, 4, 99} {
+	for _, bad := range []int{1, userVersion + 1, 99} {
 		if err := migrate(db, bad); err == nil {
 			t.Errorf("migrate(uv=%d) should error, got nil", bad)
 		}
+	}
+}
+
+// V45: the migrated test table is byte-identical to the fresh one — the v4
+// single-source DDL holds, same as V36 proves for unknown.
+func TestFreshEqualsMigratedSchemaV4(t *testing.T) {
+	fresh := openTestDB(t)
+	freshSQL := tableSQL(t, fresh, "test")
+
+	v2 := openV2(t)
+	if err := migrate(v2, 2); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	migratedSQL := tableSQL(t, v2, "test")
+
+	if freshSQL == "" || freshSQL != migratedSQL {
+		t.Errorf("schema divergence:\nfresh:    %q\nmigrated: %q", freshSQL, migratedSQL)
+	}
+}
+
+// V45: a v2 db chains 2→3→4 in one migrate call — BOTH additive tables land and
+// every pre-existing row survives. This is the loop's reason to exist: a single
+// step (the old switch) would have stranded such a db at v3.
+func TestMigrateChainV2toV4(t *testing.T) {
+	db := openV2(t)
+	pid := mustProject(t, db)
+	fid, err := addFeature(db, pid, "kept")
+	if err != nil {
+		t.Fatalf("addFeature: %v", err)
+	}
+
+	if err := migrate(db, 2); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	if tableSQL(t, db, "unknown") == "" {
+		t.Error("unknown table missing after chained migrate (v3 step skipped)")
+	}
+	if tableSQL(t, db, "test") == "" {
+		t.Error("test table missing after chained migrate (v4 step skipped)")
+	}
+	if got := userVersionOf(t, db); got != userVersion {
+		t.Errorf("post-chain user_version = %d, want %d", got, userVersion)
+	}
+	var name string
+	if err := db.QueryRow(`SELECT name FROM feature WHERE id=?`, fid).Scan(&name); err != nil || name != "kept" {
+		t.Errorf("feature lost after chained migrate: name=%q err=%v", name, err)
 	}
 }

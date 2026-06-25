@@ -35,8 +35,8 @@ func openGlobalDB() (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	// uv==0 = freshly created file (full schema); uv==2 = additive v3 migration;
-	// uv==3 = current. Unsupported versions error (V36).
+	// uv==0 = freshly created file (full schema); 2..userVersion chain their
+	// additive steps; userVersion = current. Unsupported versions error (V45).
 	if err := migrate(db, uv); err != nil {
 		db.Close()
 		return nil, err
