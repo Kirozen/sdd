@@ -49,6 +49,8 @@ func TestReadCommandsArePure(t *testing.T) {
 	run("guide")
 	run("list", "task", "--status", "x")
 	run("list", "unknown")
+	run("todo")
+	run("todo", "--pretty")
 
 	after, err := os.ReadFile(spec)
 	if err != nil {
