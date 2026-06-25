@@ -40,6 +40,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newAddUnknownCmd())
 	root.AddCommand(newResolveUnknownCmd())
 	root.AddCommand(newGuideCmd())
+	root.AddCommand(newAddTestCmd())
+	root.AddCommand(newCoverCmd())
 	return root
 }
 
