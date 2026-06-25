@@ -19,6 +19,57 @@ versionnable et infalsifiable** :
   étrangères : une tâche ne peut pas citer un invariant inexistant ;
 - une base **globale** partagée par tous les dépôts, chaque projet étant isolé.
 
+## Les éléments d'une spec
+
+Une spec `sdd` est faite de quelques **briques** typées. Chacune a une raison
+d'être précise ; c'est ce vocabulaire qui rend la spec interrogeable. Si vous ne
+deviez retenir qu'une chose, ce serait la coupe ci-dessous.
+
+### La coupe fondamentale : durable vs éphémère
+
+- Le **durable** est la mémoire long terme du projet : ce qui reste vrai d'une
+  feature à l'autre. On ne l'efface jamais en routine.
+- L'**éphémère** appartient à une **feature** — une unité de travail. Quand la
+  feature est terminée ou abandonnée, tout son éphémère est effacé ; le durable,
+  lui, survit. C'est ce qui empêche la spec de gonfler indéfiniment.
+
+### Les briques durables
+
+| Brique | Clé | Ce que c'est |
+|---|---|---|
+| **Invariant** | `V<n>` | Une règle qui doit *toujours* rester vraie, écrite pour être testable. Ex. « une tâche ne peut pas citer un invariant inexistant ». La mémoire des décisions prises. |
+| **Interface** | `I.<nom>` | Un point de contact stable avec l'extérieur (une commande, une API, un fichier) et sa signature. Ex. `I.export` = `sdd export → régénère SPEC.md`. |
+| **Bug** | `B<n>` | La trace d'une erreur passée, reliée à l'invariant qui empêche son retour. La leçon apprise, gravée pour de bon. |
+| **Research** | `R<n>` | Un fait externe vérifié (doc officielle, RFC…) avec sa source. Pour fonder une décision sur un fait, pas sur une supposition. |
+| **Test** | — | Le lien *déclaré* entre un invariant et le test qui le prouve. Rend la promesse « ce code ne peut plus régresser » vérifiable (`sdd cover`). |
+
+### Les briques éphémères (portées par une feature)
+
+| Brique | Clé | Ce que c'est |
+|---|---|---|
+| **Feature** | `F<n>` | Une unité de travail : un objectif et tout ce qu'il faut pour l'atteindre. |
+| **Goal** | `§G` | L'objectif de la feature en une phrase : ce que le code doit faire. |
+| **Constraint** | `§C` | Une limite ou une exigence non négociable : hors-scope, techno imposée, contrat à respecter. |
+| **Task** | `T<n>` | Une étape d'implémentation concrète, avec un statut et les briques durables qu'elle cite. |
+| **Unknown** | `U<n>` | Une question encore ouverte, *parquée* plutôt que devinée. Passe de `open` à `resolved`. |
+| **Gate** | — | Le verdict de review de la feature (`go` / `no-go`) : a-t-elle passé l'examen adversarial avant le build ? |
+
+### Les citations — le ciment
+
+Une tâche déclare de quoi elle dépend :
+`sdd add-task "…" --cites V2,I.export`. Des clés étrangères interdisent de citer
+un invariant ou une interface qui n'existe pas — impossible de référencer du
+vide. C'est ce qui rend la spec **infalsifiable** : `sdd refs V2` montre en
+retour tout ce qui dépend de `V2`, donc rien ne casse en silence quand on y
+touche.
+
+### Les clés `V<n>` / `T<n>` …
+
+Chaque brique numérotée porte un **ordinal** propre au projet : le premier
+invariant est `V1`, le deuxième `V2`, etc. (idem `T`, `B`, `R`, `U`, `F`). C'est
+cette clé courte que vous lisez dans `SPEC.md` et que vous passez aux commandes
+(`sdd show V2`, `sdd set-task 7 --status x`).
+
 ## Le workflow (skills)
 
 Les skills `sdd-*` orchestrent le cycle de vie ; chaque écriture durable passe
@@ -33,8 +84,11 @@ grill → spec → research → review → build → backprop → deepen
 - **sdd-spec** — seul mutateur de la spec : invariants, interfaces, tâches.
 - **sdd-research** — rassemble des faits externes ; chaque trouvaille cite sa source.
 - **sdd-review** — revue adversariale : tente de réfuter la spec avant tout code,
-  finit sur un gate go / no-go.
-- **sdd-build** — implémente tâche par tâche ; bascule le statut via `set-task`.
+  finit sur un verdict go / no-go enregistré par `sdd gate` (que `sdd guide`
+  relit ensuite).
+- **sdd-build** — implémente tâche par tâche ; bascule le statut via `set-task`,
+  relie chaque test à l'invariant qu'il prouve via `sdd add-test` (vérifiable
+  avec `sdd cover`).
 - **sdd-backprop** — bug → invariant : sur un échec, décide si un nouvel invariant
   empêcherait la récurrence.
 - **sdd-deepen** — passe optionnelle d'amélioration du design (budget restant).
@@ -49,16 +103,22 @@ actionnable avec son goal et ses citations résolues.
 
 **Mutations éphémères (par feature)** : `new-feature`, `add-goal`,
 `add-constraint`, `add-task`, `set-task`, `wipe-feature`, `add-unknown`,
-`resolve-unknown`
+`resolve-unknown`, `gate`
 
 **Mutations durables** : `add-invariant`, `add-interface`, `add-bug`,
-`add-research`, `edit`, `deprecate-interface`
+`add-research`, `add-test`, `edit`, `deprecate-interface`
 
 **Lectures (pures, sans ré-export)** : `show`, `list` (avec `--pretty`, et pour
-les tâches `--status`/`--feature`), `refs`, `status`, `next`, `guide`
+les tâches `--status`/`--feature`), `refs`, `status`, `next`, `guide`, `cover`
 
 Statuts de tâche : `.` à faire · `~` en cours · `x` fait.
 Statuts d'unknown : `open` · `resolved` (jamais supprimé).
+Verdicts de gate : `go` · `no-go` (un seul par feature, le dernier remplace).
+
+Quelques commandes utiles pour s'y retrouver : `sdd guide` (où en est chaque
+feature, et quelle skill lancer ensuite), `sdd next` (la prochaine tâche
+actionnable, avec son goal et ses citations résolues), `sdd cover` (quels
+invariants sont gardés par un test, lesquels ne le sont pas).
 
 ## Où vivent les données
 
