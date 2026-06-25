@@ -13,7 +13,7 @@ import (
 // nextUnknownOrd is the next per-project display ordinal U<n> for unknowns,
 // whose project is reached through their feature (V26, like nextTaskOrd).
 func nextUnknownOrd(db *sql.DB, projectID int64) (int, error) {
-	n, err := dbq.New(db).NextUnknownOrd(context.Background(), nz(projectID))
+	n, err := dbq.New(db).NextUnknownOrd(context.Background(), projectID)
 	return int(n), err
 }
 
@@ -25,7 +25,7 @@ func addUnknown(db *sql.DB, projectID, featurePK int64, text string) (int, error
 		return 0, err
 	}
 	if err := dbq.New(db).InsertUnknown(context.Background(), dbq.InsertUnknownParams{
-		FeatureID: featurePK, Ord: nz(int64(ord)), Text: text,
+		FeatureID: featurePK, Ord: int64(ord), Text: text,
 	}); err != nil {
 		return 0, err
 	}
@@ -36,7 +36,7 @@ func addUnknown(db *sql.DB, projectID, featurePK int64, text string) (int, error
 // the project (V20, V26); never hard-deletes (V35). Unknown ordinal → error.
 func resolveUnknown(db *sql.DB, projectID, ord int64) error {
 	n, err := dbq.New(db).ResolveUnknown(context.Background(), dbq.ResolveUnknownParams{
-		Ord: nz(ord), ProjectID: nz(projectID),
+		Ord: ord, ProjectID: projectID,
 	})
 	if err != nil {
 		return err

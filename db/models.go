@@ -10,8 +10,8 @@ import (
 
 type Bug struct {
 	ID        int64
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Date      string
 	Cause     string
 }
@@ -29,8 +29,8 @@ type Constraint struct {
 
 type Feature struct {
 	ID        int64
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Name      string
 }
 
@@ -50,7 +50,7 @@ type Goal struct {
 
 type Interface struct {
 	ID        int64
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Kind      string
 	Name      string
 	Sig       string
@@ -59,8 +59,8 @@ type Interface struct {
 
 type Invariant struct {
 	ID        int64
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Text      string
 }
 
@@ -72,8 +72,8 @@ type Project struct {
 
 type Research struct {
 	ID        int64
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Topic     string
 	Finding   string
 	Src       string
@@ -82,7 +82,7 @@ type Research struct {
 type Task struct {
 	ID        int64
 	FeatureID int64
-	Ord       sql.NullInt64
+	Ord       int64
 	Text      string
 	Status    string
 }
@@ -106,7 +106,7 @@ type Test struct {
 type Unknown struct {
 	ID        int64
 	FeatureID int64
-	Ord       sql.NullInt64
+	Ord       int64
 	Text      string
 	Status    string
 }

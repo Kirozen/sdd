@@ -28,15 +28,15 @@ const bugCitersOfInv = `-- name: BugCitersOfInv :many
 SELECT b.ord FROM bug_fix j JOIN bug b ON b.id = j.bug_id WHERE j.inv_id = ? ORDER BY b.ord
 `
 
-func (q *Queries) BugCitersOfInv(ctx context.Context, invID int64) ([]sql.NullInt64, error) {
+func (q *Queries) BugCitersOfInv(ctx context.Context, invID int64) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, bugCitersOfInv, invID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []sql.NullInt64{}
+	items := []int64{}
 	for rows.Next() {
-		var ord sql.NullInt64
+		var ord int64
 		if err := rows.Scan(&ord); err != nil {
 			return nil, err
 		}
@@ -57,15 +57,15 @@ SELECT i.ord FROM bug_fix j JOIN invariant i ON i.id = j.inv_id WHERE j.bug_id =
 `
 
 // ============================================================ reads: cite resolution (export.go / next.go)
-func (q *Queries) BugFixInvOrds(ctx context.Context, bugID int64) ([]sql.NullInt64, error) {
+func (q *Queries) BugFixInvOrds(ctx context.Context, bugID int64) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, bugFixInvOrds, bugID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []sql.NullInt64{}
+	items := []int64{}
 	for rows.Next() {
-		var ord sql.NullInt64
+		var ord int64
 		if err := rows.Scan(&ord); err != nil {
 			return nil, err
 		}
@@ -86,12 +86,12 @@ SELECT id, ord, date, cause FROM bug WHERE project_id = ? ORDER BY ord
 
 type BugsByProjectRow struct {
 	ID    int64
-	Ord   sql.NullInt64
+	Ord   int64
 	Date  string
 	Cause string
 }
 
-func (q *Queries) BugsByProject(ctx context.Context, projectID sql.NullInt64) ([]BugsByProjectRow, error) {
+func (q *Queries) BugsByProject(ctx context.Context, projectID int64) ([]BugsByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, bugsByProject, projectID)
 	if err != nil {
 		return nil, err
@@ -125,15 +125,15 @@ SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id = j.task_id WHERE j.ifa
 `
 
 // ============================================================ reads: refs (refs.go)
-func (q *Queries) CitersOfIface(ctx context.Context, ifaceID int64) ([]sql.NullInt64, error) {
+func (q *Queries) CitersOfIface(ctx context.Context, ifaceID int64) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, citersOfIface, ifaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []sql.NullInt64{}
+	items := []int64{}
 	for rows.Next() {
-		var ord sql.NullInt64
+		var ord int64
 		if err := rows.Scan(&ord); err != nil {
 			return nil, err
 		}
@@ -198,7 +198,7 @@ const deleteProjectBugs = `-- name: DeleteProjectBugs :exec
 DELETE FROM bug WHERE project_id = ?
 `
 
-func (q *Queries) DeleteProjectBugs(ctx context.Context, projectID sql.NullInt64) error {
+func (q *Queries) DeleteProjectBugs(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProjectBugs, projectID)
 	return err
 }
@@ -207,7 +207,7 @@ const deleteProjectFeatures = `-- name: DeleteProjectFeatures :exec
 DELETE FROM feature WHERE project_id = ?
 `
 
-func (q *Queries) DeleteProjectFeatures(ctx context.Context, projectID sql.NullInt64) error {
+func (q *Queries) DeleteProjectFeatures(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProjectFeatures, projectID)
 	return err
 }
@@ -216,7 +216,7 @@ const deleteProjectInterfaces = `-- name: DeleteProjectInterfaces :exec
 DELETE FROM interface WHERE project_id = ?
 `
 
-func (q *Queries) DeleteProjectInterfaces(ctx context.Context, projectID sql.NullInt64) error {
+func (q *Queries) DeleteProjectInterfaces(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProjectInterfaces, projectID)
 	return err
 }
@@ -225,7 +225,7 @@ const deleteProjectInvariants = `-- name: DeleteProjectInvariants :exec
 DELETE FROM invariant WHERE project_id = ?
 `
 
-func (q *Queries) DeleteProjectInvariants(ctx context.Context, projectID sql.NullInt64) error {
+func (q *Queries) DeleteProjectInvariants(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProjectInvariants, projectID)
 	return err
 }
@@ -234,7 +234,7 @@ const deleteProjectResearch = `-- name: DeleteProjectResearch :exec
 DELETE FROM research WHERE project_id = ?
 `
 
-func (q *Queries) DeleteProjectResearch(ctx context.Context, projectID sql.NullInt64) error {
+func (q *Queries) DeleteProjectResearch(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProjectResearch, projectID)
 	return err
 }
@@ -244,7 +244,7 @@ UPDATE interface SET status = 'deprecated' WHERE project_id = ? AND name = ?
 `
 
 type DeprecateInterfaceParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Name      string
 }
 
@@ -267,11 +267,11 @@ ORDER BY t.ord, i.name
 `
 
 type DeprecatedCiteWarningsRow struct {
-	Ord  sql.NullInt64
+	Ord  int64
 	Name string
 }
 
-func (q *Queries) DeprecatedCiteWarnings(ctx context.Context, projectID sql.NullInt64) ([]DeprecatedCiteWarningsRow, error) {
+func (q *Queries) DeprecatedCiteWarnings(ctx context.Context, projectID int64) ([]DeprecatedCiteWarningsRow, error) {
 	rows, err := q.db.QueryContext(ctx, deprecatedCiteWarnings, projectID)
 	if err != nil {
 		return nil, err
@@ -300,8 +300,8 @@ UPDATE bug SET cause = ? WHERE project_id = ? AND ord = ?
 
 type EditBugParams struct {
 	Cause     string
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 func (q *Queries) EditBug(ctx context.Context, arg EditBugParams) (int64, error) {
@@ -352,7 +352,7 @@ UPDATE interface SET sig = ? WHERE project_id = ? AND name = ?
 
 type EditInterfaceSigParams struct {
 	Sig       string
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Name      string
 }
 
@@ -371,8 +371,8 @@ UPDATE invariant SET text = ? WHERE project_id = ? AND ord = ?
 
 type EditInvariantParams struct {
 	Text      string
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 // ============================================================ updates / deletes (return rows affected for the n==0 not-found check)
@@ -390,8 +390,8 @@ UPDATE research SET finding = ? WHERE project_id = ? AND ord = ?
 
 type EditResearchParams struct {
 	Finding   string
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 func (q *Queries) EditResearch(ctx context.Context, arg EditResearchParams) (int64, error) {
@@ -408,8 +408,8 @@ UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT featu
 
 type EditTaskParams struct {
 	Text      string
-	Ord       sql.NullInt64
-	ProjectID sql.NullInt64
+	Ord       int64
+	ProjectID int64
 }
 
 func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (int64, error) {
@@ -444,9 +444,9 @@ const featureOrdByID = `-- name: FeatureOrdByID :one
 SELECT ord FROM feature WHERE id = ?
 `
 
-func (q *Queries) FeatureOrdByID(ctx context.Context, id int64) (sql.NullInt64, error) {
+func (q *Queries) FeatureOrdByID(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, featureOrdByID, id)
-	var ord sql.NullInt64
+	var ord int64
 	err := row.Scan(&ord)
 	return ord, err
 }
@@ -456,8 +456,8 @@ SELECT id FROM feature WHERE project_id = ? AND ord = ?
 `
 
 type FeaturePKParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 func (q *Queries) FeaturePK(ctx context.Context, arg FeaturePKParams) (int64, error) {
@@ -494,11 +494,11 @@ SELECT id, ord, name FROM feature WHERE project_id = ? ORDER BY ord
 
 type FeaturesByProjectRow struct {
 	ID   int64
-	Ord  sql.NullInt64
+	Ord  int64
 	Name string
 }
 
-func (q *Queries) FeaturesByProject(ctx context.Context, projectID sql.NullInt64) ([]FeaturesByProjectRow, error) {
+func (q *Queries) FeaturesByProject(ctx context.Context, projectID int64) ([]FeaturesByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, featuresByProject, projectID)
 	if err != nil {
 		return nil, err
@@ -564,8 +564,8 @@ INSERT INTO bug(project_id, ord, date, cause) VALUES(?, ?, ?, ?)
 `
 
 type InsertBugParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Date      string
 	Cause     string
 }
@@ -617,8 +617,8 @@ INSERT INTO feature(project_id, ord, name) VALUES(?, ?, ?)
 `
 
 type InsertFeatureParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Name      string
 }
 
@@ -650,7 +650,7 @@ INSERT INTO interface(project_id, kind, name, sig) VALUES(?, ?, ?, ?)
 `
 
 type InsertInterfaceParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Kind      string
 	Name      string
 	Sig       string
@@ -674,8 +674,8 @@ INSERT INTO invariant(project_id, ord, text) VALUES(?, ?, ?)
 `
 
 type InsertInvariantParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Text      string
 }
 
@@ -689,8 +689,8 @@ INSERT INTO research(project_id, ord, topic, finding, src) VALUES(?, ?, ?, ?, ?)
 `
 
 type InsertResearchParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 	Topic     string
 	Finding   string
 	Src       string
@@ -713,7 +713,7 @@ INSERT INTO task(feature_id, ord, text) VALUES(?, ?, ?)
 
 type InsertTaskParams struct {
 	FeatureID int64
-	Ord       sql.NullInt64
+	Ord       int64
 	Text      string
 }
 
@@ -759,7 +759,7 @@ INSERT INTO task(feature_id, ord, text, status) VALUES(?, ?, ?, ?)
 
 type InsertTaskFullParams struct {
 	FeatureID int64
-	Ord       sql.NullInt64
+	Ord       int64
 	Text      string
 	Status    string
 }
@@ -798,7 +798,7 @@ INSERT INTO unknown(feature_id, ord, text) VALUES(?, ?, ?)
 
 type InsertUnknownParams struct {
 	FeatureID int64
-	Ord       sql.NullInt64
+	Ord       int64
 	Text      string
 }
 
@@ -812,7 +812,7 @@ SELECT id FROM interface WHERE project_id = ? AND name = ?
 `
 
 type InterfaceIDByNameParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Name      string
 }
 
@@ -836,7 +836,7 @@ type InterfacesByProjectRow struct {
 }
 
 // ============================================================ reads: canonical row lists (export.go + list.go share these, V18)
-func (q *Queries) InterfacesByProject(ctx context.Context, projectID sql.NullInt64) ([]InterfacesByProjectRow, error) {
+func (q *Queries) InterfacesByProject(ctx context.Context, projectID int64) ([]InterfacesByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, interfacesByProject, projectID)
 	if err != nil {
 		return nil, err
@@ -873,7 +873,7 @@ GROUP BY i.id ORDER BY i.ord
 `
 
 type InvariantCoverageRow struct {
-	Ord   sql.NullInt64
+	Ord   int64
 	Text  string
 	Tests string
 }
@@ -881,7 +881,7 @@ type InvariantCoverageRow struct {
 // ============================================================ reads: cover (cover.go)
 // Each project invariant with its proving test names joined (empty when none).
 // CAST keeps GROUP_CONCAT a plain string for sqlc.
-func (q *Queries) InvariantCoverage(ctx context.Context, projectID sql.NullInt64) ([]InvariantCoverageRow, error) {
+func (q *Queries) InvariantCoverage(ctx context.Context, projectID int64) ([]InvariantCoverageRow, error) {
 	rows, err := q.db.QueryContext(ctx, invariantCoverage, projectID)
 	if err != nil {
 		return nil, err
@@ -909,8 +909,8 @@ SELECT id FROM invariant WHERE project_id = ? AND ord = ?
 `
 
 type InvariantIDByOrdParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 func (q *Queries) InvariantIDByOrd(ctx context.Context, arg InvariantIDByOrdParams) (int64, error) {
@@ -925,11 +925,11 @@ SELECT ord, text FROM invariant WHERE project_id = ? ORDER BY ord
 `
 
 type InvariantsByProjectRow struct {
-	Ord  sql.NullInt64
+	Ord  int64
 	Text string
 }
 
-func (q *Queries) InvariantsByProject(ctx context.Context, projectID sql.NullInt64) ([]InvariantsByProjectRow, error) {
+func (q *Queries) InvariantsByProject(ctx context.Context, projectID int64) ([]InvariantsByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, invariantsByProject, projectID)
 	if err != nil {
 		return nil, err
@@ -964,16 +964,16 @@ LIMIT 1
 `
 
 type NextActionableTaskRow struct {
-	FeatOrd  sql.NullInt64
+	FeatOrd  int64
 	FeatName string
 	FeatID   int64
-	TaskOrd  sql.NullInt64
+	TaskOrd  int64
 	Status   string
 	Text     string
 	TaskID   int64
 }
 
-func (q *Queries) NextActionableTask(ctx context.Context, projectID sql.NullInt64) (NextActionableTaskRow, error) {
+func (q *Queries) NextActionableTask(ctx context.Context, projectID int64) (NextActionableTaskRow, error) {
 	row := q.db.QueryRowContext(ctx, nextActionableTask, projectID)
 	var i NextActionableTaskRow
 	err := row.Scan(
@@ -992,7 +992,7 @@ const nextBugOrd = `-- name: NextBugOrd :one
 SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM bug WHERE project_id = ?
 `
 
-func (q *Queries) NextBugOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
+func (q *Queries) NextBugOrd(ctx context.Context, projectID int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextBugOrd, projectID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
@@ -1003,7 +1003,7 @@ const nextFeatureOrd = `-- name: NextFeatureOrd :one
 SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM feature WHERE project_id = ?
 `
 
-func (q *Queries) NextFeatureOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
+func (q *Queries) NextFeatureOrd(ctx context.Context, projectID int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextFeatureOrd, projectID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
@@ -1017,7 +1017,7 @@ SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM invariant WHE
 
 // ============================================================ ordinals (V26)
 // COALESCE(MAX(ord),0)+1, cast so sqlc yields a clean int64.
-func (q *Queries) NextInvariantOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
+func (q *Queries) NextInvariantOrd(ctx context.Context, projectID int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextInvariantOrd, projectID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
@@ -1028,7 +1028,7 @@ const nextResearchOrd = `-- name: NextResearchOrd :one
 SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM research WHERE project_id = ?
 `
 
-func (q *Queries) NextResearchOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
+func (q *Queries) NextResearchOrd(ctx context.Context, projectID int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextResearchOrd, projectID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
@@ -1041,7 +1041,7 @@ FROM task t JOIN feature f ON f.id = t.feature_id
 WHERE f.project_id = ?
 `
 
-func (q *Queries) NextTaskOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
+func (q *Queries) NextTaskOrd(ctx context.Context, projectID int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextTaskOrd, projectID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
@@ -1054,7 +1054,7 @@ FROM unknown u JOIN feature f ON f.id = u.feature_id
 WHERE f.project_id = ?
 `
 
-func (q *Queries) NextUnknownOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
+func (q *Queries) NextUnknownOrd(ctx context.Context, projectID int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextUnknownOrd, projectID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
@@ -1071,12 +1071,12 @@ ORDER BY f.ord
 `
 
 type OpenUnknownFeaturesRow struct {
-	Ord  sql.NullInt64
+	Ord  int64
 	Name string
 	N    int64
 }
 
-func (q *Queries) OpenUnknownFeatures(ctx context.Context, projectID sql.NullInt64) ([]OpenUnknownFeaturesRow, error) {
+func (q *Queries) OpenUnknownFeatures(ctx context.Context, projectID int64) ([]OpenUnknownFeaturesRow, error) {
 	rows, err := q.db.QueryContext(ctx, openUnknownFeatures, projectID)
 	if err != nil {
 		return nil, err
@@ -1144,11 +1144,11 @@ AS INTEGER) AS n
 `
 
 type ProjectRowCountParams struct {
-	ProjectID   sql.NullInt64
-	ProjectID_2 sql.NullInt64
-	ProjectID_3 sql.NullInt64
-	ProjectID_4 sql.NullInt64
-	ProjectID_5 sql.NullInt64
+	ProjectID   int64
+	ProjectID_2 int64
+	ProjectID_3 int64
+	ProjectID_4 int64
+	ProjectID_5 int64
 }
 
 // ============================================================ seed/import wipe (import.go)
@@ -1172,13 +1172,13 @@ SELECT ord, topic, finding, src FROM research WHERE project_id = ? ORDER BY ord
 `
 
 type ResearchByProjectRow struct {
-	Ord     sql.NullInt64
+	Ord     int64
 	Topic   string
 	Finding string
 	Src     string
 }
 
-func (q *Queries) ResearchByProject(ctx context.Context, projectID sql.NullInt64) ([]ResearchByProjectRow, error) {
+func (q *Queries) ResearchByProject(ctx context.Context, projectID int64) ([]ResearchByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, researchByProject, projectID)
 	if err != nil {
 		return nil, err
@@ -1211,8 +1211,8 @@ UPDATE unknown SET status = 'resolved' WHERE unknown.ord = ? AND unknown.feature
 `
 
 type ResolveUnknownParams struct {
-	Ord       sql.NullInt64
-	ProjectID sql.NullInt64
+	Ord       int64
+	ProjectID int64
 }
 
 func (q *Queries) ResolveUnknown(ctx context.Context, arg ResolveUnknownParams) (int64, error) {
@@ -1229,8 +1229,8 @@ UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT fea
 
 type SetTaskStatusParams struct {
 	Status    string
-	Ord       sql.NullInt64
-	ProjectID sql.NullInt64
+	Ord       int64
+	ProjectID int64
 }
 
 func (q *Queries) SetTaskStatus(ctx context.Context, arg SetTaskStatusParams) (int64, error) {
@@ -1246,8 +1246,8 @@ SELECT id, date, cause FROM bug WHERE project_id = ? AND ord = ?
 `
 
 type ShowBugParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 type ShowBugRow struct {
@@ -1269,7 +1269,7 @@ SELECT kind, sig, status FROM interface WHERE project_id = ? AND name = ?
 `
 
 type ShowInterfaceParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Name      string
 }
 
@@ -1292,8 +1292,8 @@ SELECT text FROM invariant WHERE project_id = ? AND ord = ?
 `
 
 type ShowInvariantParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 func (q *Queries) ShowInvariant(ctx context.Context, arg ShowInvariantParams) (string, error) {
@@ -1308,8 +1308,8 @@ SELECT topic, finding, src FROM research WHERE project_id = ? AND ord = ?
 `
 
 type ShowResearchParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 type ShowResearchRow struct {
@@ -1332,8 +1332,8 @@ WHERE f.project_id = ? AND t.ord = ?
 `
 
 type ShowTaskParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 type ShowTaskRow struct {
@@ -1380,15 +1380,15 @@ const taskCiteInvOrds = `-- name: TaskCiteInvOrds :many
 SELECT i.ord FROM task_cites_inv j JOIN invariant i ON i.id = j.inv_id WHERE j.task_id = ? ORDER BY i.ord
 `
 
-func (q *Queries) TaskCiteInvOrds(ctx context.Context, taskID int64) ([]sql.NullInt64, error) {
+func (q *Queries) TaskCiteInvOrds(ctx context.Context, taskID int64) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, taskCiteInvOrds, taskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []sql.NullInt64{}
+	items := []int64{}
 	for rows.Next() {
-		var ord sql.NullInt64
+		var ord int64
 		if err := rows.Scan(&ord); err != nil {
 			return nil, err
 		}
@@ -1407,15 +1407,15 @@ const taskCitersOfInv = `-- name: TaskCitersOfInv :many
 SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id = j.task_id WHERE j.inv_id = ? ORDER BY t.ord
 `
 
-func (q *Queries) TaskCitersOfInv(ctx context.Context, invID int64) ([]sql.NullInt64, error) {
+func (q *Queries) TaskCitersOfInv(ctx context.Context, invID int64) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, taskCitersOfInv, invID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []sql.NullInt64{}
+	items := []int64{}
 	for rows.Next() {
-		var ord sql.NullInt64
+		var ord int64
 		if err := rows.Scan(&ord); err != nil {
 			return nil, err
 		}
@@ -1434,9 +1434,9 @@ const taskOrdByID = `-- name: TaskOrdByID :one
 SELECT ord FROM task WHERE id = ?
 `
 
-func (q *Queries) TaskOrdByID(ctx context.Context, id int64) (sql.NullInt64, error) {
+func (q *Queries) TaskOrdByID(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, taskOrdByID, id)
-	var ord sql.NullInt64
+	var ord int64
 	err := row.Scan(&ord)
 	return ord, err
 }
@@ -1481,7 +1481,7 @@ SELECT id, ord, status, text FROM task WHERE feature_id = ? ORDER BY ord
 
 type TasksByFeatureRow struct {
 	ID     int64
-	Ord    sql.NullInt64
+	Ord    int64
 	Status string
 	Text   string
 }
@@ -1523,7 +1523,7 @@ WHERE f.project_id = ? ORDER BY t.ord
 
 type TasksInProjectRow struct {
 	ID     int64
-	Ord    sql.NullInt64
+	Ord    int64
 	Status string
 	Text   string
 }
@@ -1532,7 +1532,7 @@ type TasksInProjectRow struct {
 // sqlc's SQLite engine rejects narg-style optional params, so the combinations
 // are explicit. Feature existence is still resolved in Go (featurePK) before the
 // by-feature variants run, so a missing feature errors rather than returns empty.
-func (q *Queries) TasksInProject(ctx context.Context, projectID sql.NullInt64) ([]TasksInProjectRow, error) {
+func (q *Queries) TasksInProject(ctx context.Context, projectID int64) ([]TasksInProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, tasksInProject, projectID)
 	if err != nil {
 		return nil, err
@@ -1567,13 +1567,13 @@ WHERE f.project_id = ? AND t.feature_id = ? ORDER BY t.ord
 `
 
 type TasksInProjectByFeatureParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	FeatureID int64
 }
 
 type TasksInProjectByFeatureRow struct {
 	ID     int64
-	Ord    sql.NullInt64
+	Ord    int64
 	Status string
 	Text   string
 }
@@ -1613,14 +1613,14 @@ WHERE f.project_id = ? AND t.feature_id = ? AND t.status = ? ORDER BY t.ord
 `
 
 type TasksInProjectByFeatureStatusParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	FeatureID int64
 	Status    string
 }
 
 type TasksInProjectByFeatureStatusRow struct {
 	ID     int64
-	Ord    sql.NullInt64
+	Ord    int64
 	Status string
 	Text   string
 }
@@ -1660,13 +1660,13 @@ WHERE f.project_id = ? AND t.status = ? ORDER BY t.ord
 `
 
 type TasksInProjectByStatusParams struct {
-	ProjectID sql.NullInt64
+	ProjectID int64
 	Status    string
 }
 
 type TasksInProjectByStatusRow struct {
 	ID     int64
-	Ord    sql.NullInt64
+	Ord    int64
 	Status string
 	Text   string
 }
@@ -1706,12 +1706,12 @@ WHERE f.project_id = ? ORDER BY u.ord
 `
 
 type UnknownsByProjectRow struct {
-	Ord    sql.NullInt64
+	Ord    int64
 	Status string
 	Text   string
 }
 
-func (q *Queries) UnknownsByProject(ctx context.Context, projectID sql.NullInt64) ([]UnknownsByProjectRow, error) {
+func (q *Queries) UnknownsByProject(ctx context.Context, projectID int64) ([]UnknownsByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, unknownsByProject, projectID)
 	if err != nil {
 		return nil, err
@@ -1762,8 +1762,8 @@ DELETE FROM feature WHERE project_id = ? AND ord = ?
 `
 
 type WipeFeatureParams struct {
-	ProjectID sql.NullInt64
-	Ord       sql.NullInt64
+	ProjectID int64
+	Ord       int64
 }
 
 func (q *Queries) WipeFeature(ctx context.Context, arg WipeFeatureParams) (int64, error) {

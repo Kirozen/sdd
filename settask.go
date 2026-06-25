@@ -15,7 +15,7 @@ import (
 // an error.
 func setTaskStatus(db *sql.DB, projectID, taskOrd int64, status string) error {
 	n, err := dbq.New(db).SetTaskStatus(context.Background(), dbq.SetTaskStatusParams{
-		Status: status, Ord: nz(taskOrd), ProjectID: nz(projectID),
+		Status: status, Ord: taskOrd, ProjectID: projectID,
 	})
 	if err != nil {
 		return err

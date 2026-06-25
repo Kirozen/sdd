@@ -19,7 +19,7 @@ import (
 func addTest(db *sql.DB, projectID, invOrd int64, name string) error {
 	q := dbq.New(db)
 	ctx := context.Background()
-	invPK, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(invOrd)})
+	invPK, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: projectID, Ord: invOrd})
 	if err != nil {
 		return fmt.Errorf("no invariant V%d in this project", invOrd)
 	}

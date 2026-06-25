@@ -53,7 +53,7 @@ type nextResult struct {
 // actionable task exists.
 func nextActionable(db *sql.DB, projectID int64) (*nextResult, error) {
 	// Lowest-ord feature with a non-`x` task; within it `~` before `.`, then ord.
-	r, err := dbq.New(db).NextActionableTask(context.Background(), nz(projectID))
+	r, err := dbq.New(db).NextActionableTask(context.Background(), projectID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -76,10 +76,10 @@ func nextActionable(db *sql.DB, projectID int64) (*nextResult, error) {
 	}
 
 	return &nextResult{
-		featOrd:   int(r.FeatOrd.Int64),
+		featOrd:   int(r.FeatOrd),
 		featName:  r.FeatName,
 		goals:     goals,
-		taskLine:  fmtTaskLine(int(r.TaskOrd.Int64), r.Status, r.Text, cites),
+		taskLine:  fmtTaskLine(int(r.TaskOrd), r.Status, r.Text, cites),
 		citeLines: citeLines,
 	}, nil
 }
@@ -116,7 +116,7 @@ func renderNext(r *nextResult) []string {
 // spec (seeded/grilled) is pointed at; otherwise, with features present and all
 // built, the project is up to date; with no feature at all, point at the grill.
 func emptyHint(db *sql.DB, projectID int64) ([]string, error) {
-	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func emptyHint(db *sql.DB, projectID int64) ([]string, error) {
 			return nil, err
 		}
 		if stageBeforeSpec(stage) {
-			awaiting = append(awaiting, fmt.Sprintf("F%d %s awaits spec (%s) — run sdd-spec", int(f.Ord.Int64), f.Name, stage))
+			awaiting = append(awaiting, fmt.Sprintf("F%d %s awaits spec (%s) — run sdd-spec", int(f.Ord), f.Name, stage))
 		}
 	}
 	if len(awaiting) > 0 {

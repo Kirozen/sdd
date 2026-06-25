@@ -14,7 +14,7 @@ import (
 // auditable: uncovered invariants are exactly the ones no test guards. Read-pure
 // (V16, no mutation/re-export); scoped to the project (V20).
 func coverReport(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := dbq.New(db).InvariantCoverage(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).InvariantCoverage(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -23,10 +23,10 @@ func coverReport(db *sql.DB, projectID int64) ([]string, error) {
 	for _, r := range rows {
 		total++
 		if r.Tests == "" {
-			out = append(out, fmt.Sprintf("! V%d aucun test — %s", int(r.Ord.Int64), snippet(r.Text)))
+			out = append(out, fmt.Sprintf("! V%d aucun test — %s", int(r.Ord), snippet(r.Text)))
 		} else {
 			covered++
-			out = append(out, fmt.Sprintf("V%d ✓ %s", int(r.Ord.Int64), r.Tests))
+			out = append(out, fmt.Sprintf("V%d ✓ %s", int(r.Ord), r.Tests))
 		}
 	}
 	out = append(out, fmt.Sprintf("gardés: %d/%d invariants", covered, total))

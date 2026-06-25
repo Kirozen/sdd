@@ -44,7 +44,7 @@ func openProjectContext() (*sql.DB, int64, string, error) {
 func nextOrd(q dbq.DBTX, table string, projectID int64) (int, error) {
 	ctx := context.Background()
 	qs := dbq.New(q)
-	pid := nz(projectID)
+	pid := projectID
 	var (
 		n   int64
 		err error
@@ -66,7 +66,7 @@ func nextOrd(q dbq.DBTX, table string, projectID int64) (int, error) {
 
 // nextTaskOrd is nextOrd for tasks, whose project is reached through feature.
 func nextTaskOrd(q dbq.DBTX, projectID int64) (int, error) {
-	n, err := dbq.New(q).NextTaskOrd(context.Background(), nz(projectID))
+	n, err := dbq.New(q).NextTaskOrd(context.Background(), projectID)
 	return int(n), err
 }
 

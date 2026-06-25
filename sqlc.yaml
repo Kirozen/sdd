@@ -13,3 +13,13 @@ sql:
         out: "db"
         sql_package: "database/sql"  # driver-agnostic; works with modernc.org/sqlite
         emit_empty_slices: true      # :many returns []T{} not nil — matches range-over-rows
+        # project_id and ord are nullable in the schema but never NULL in practice
+        # (every row carries a project_id, V20; ord is assigned at insert, V26).
+        # Overriding them to non-null int64 is where that decision lives: the
+        # generated API takes/returns plain int64, so command code needs no
+        # NullInt64 wrapping (V57). A NULL would fail loudly at scan, as it should.
+        overrides:
+          - column: "*.project_id"
+            go_type: "int64"
+          - column: "*.ord"
+            go_type: "int64"

@@ -18,17 +18,17 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 	q := dbq.New(db)
 	switch kind {
 	case "invariant":
-		rows, err := q.InvariantsByProject(ctx, nz(projectID))
+		rows, err := q.InvariantsByProject(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
 		out := make([]string, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, fmtInvariantLine(int(r.Ord.Int64), r.Text))
+			out = append(out, fmtInvariantLine(int(r.Ord), r.Text))
 		}
 		return out, nil
 	case "interface":
-		rows, err := q.InterfacesByProject(ctx, nz(projectID))
+		rows, err := q.InterfacesByProject(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
@@ -38,23 +38,23 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 		}
 		return out, nil
 	case "research":
-		rows, err := q.ResearchByProject(ctx, nz(projectID))
+		rows, err := q.ResearchByProject(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
 		out := make([]string, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, fmtResearchLine(int(r.Ord.Int64), r.Topic, r.Finding, r.Src))
+			out = append(out, fmtResearchLine(int(r.Ord), r.Topic, r.Finding, r.Src))
 		}
 		return out, nil
 	case "feature":
-		rows, err := q.FeaturesByProject(ctx, nz(projectID))
+		rows, err := q.FeaturesByProject(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
 		out := make([]string, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, fmt.Sprintf("FEATURE %d: %s", int(r.Ord.Int64), r.Name))
+			out = append(out, fmt.Sprintf("FEATURE %d: %s", int(r.Ord), r.Name))
 		}
 		return out, nil
 	case "task":
@@ -65,13 +65,13 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 		// Feature-scoped, all statuses (open + resolved), per-project ordinal U<n>.
 		// Not part of listAllKinds, so `list` (no kind) omits it (V28); only an
 		// explicit `list unknown` surfaces them.
-		rows, err := q.UnknownsByProject(ctx, nz(projectID))
+		rows, err := q.UnknownsByProject(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
 		out := make([]string, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, fmtUnknownLine(int(r.Ord.Int64), r.Status, r.Text))
+			out = append(out, fmtUnknownLine(int(r.Ord), r.Status, r.Text))
 		}
 		return out, nil
 	default:
@@ -173,7 +173,7 @@ func listPretty(db *sql.DB, projectID int64) ([]string, error) {
 }
 
 func prettyInterfaces(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := dbq.New(db).InterfacesByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).InterfacesByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -190,33 +190,33 @@ func prettyInterfaces(db *sql.DB, projectID int64) ([]string, error) {
 }
 
 func prettyResearch(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := dbq.New(db).ResearchByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).ResearchByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
 	var refs, bodies []string
 	for _, r := range rows {
-		refs = append(refs, fmt.Sprintf("R%d", int(r.Ord.Int64)))
+		refs = append(refs, fmt.Sprintf("R%d", int(r.Ord)))
 		bodies = append(bodies, fmt.Sprintf("%s — %s  (%s)", r.Topic, r.Finding, r.Src))
 	}
 	return alignRows(refs, bodies), nil
 }
 
 func prettyInvariants(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := dbq.New(db).InvariantsByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).InvariantsByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
 	var refs, bodies []string
 	for _, r := range rows {
-		refs = append(refs, fmt.Sprintf("V%d", int(r.Ord.Int64)))
+		refs = append(refs, fmt.Sprintf("V%d", int(r.Ord)))
 		bodies = append(bodies, r.Text)
 	}
 	return alignRows(refs, bodies), nil
 }
 
 func prettyBugs(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := dbq.New(db).BugsByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).BugsByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func prettyBugs(db *sql.DB, projectID int64) ([]string, error) {
 		if fix != "-" {
 			body += "  → fixed " + fix
 		}
-		refs = append(refs, fmt.Sprintf("B%d", int(b.Ord.Int64)))
+		refs = append(refs, fmt.Sprintf("B%d", int(b.Ord)))
 		bodies = append(bodies, body)
 	}
 	return alignRows(refs, bodies), nil
@@ -243,7 +243,7 @@ type prettyFeature struct {
 }
 
 func prettyFeatures(db *sql.DB, projectID int64) ([]prettyFeature, error) {
-	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func prettyFeatures(db *sql.DB, projectID int64) ([]prettyFeature, error) {
 			return nil, err
 		}
 		out = append(out, prettyFeature{
-			header: fmt.Sprintf("FEATURE %d — %s", int(f.Ord.Int64), f.Name),
+			header: fmt.Sprintf("FEATURE %d — %s", int(f.Ord), f.Name),
 			tasks:  tasks,
 		})
 	}
@@ -276,7 +276,7 @@ func prettyTasks(db *sql.DB, featurePK int64) ([]string, error) {
 		if cites != "-" {
 			body += "  → " + cites
 		}
-		refs = append(refs, fmt.Sprintf("T%d", int(t.Ord.Int64)))
+		refs = append(refs, fmt.Sprintf("T%d", int(t.Ord)))
 		bodies = append(bodies, body)
 	}
 	return alignRows(refs, bodies), nil
@@ -327,41 +327,41 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 	switch {
 	case featureOrd > 0 && status != "":
 		rows, err := q.TasksInProjectByFeatureStatus(ctx, dbq.TasksInProjectByFeatureStatusParams{
-			ProjectID: nz(projectID), FeatureID: featPK, Status: status,
+			ProjectID: projectID, FeatureID: featPK, Status: status,
 		})
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
 		}
 	case featureOrd > 0:
 		rows, err := q.TasksInProjectByFeature(ctx, dbq.TasksInProjectByFeatureParams{
-			ProjectID: nz(projectID), FeatureID: featPK,
+			ProjectID: projectID, FeatureID: featPK,
 		})
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
 		}
 	case status != "":
 		rows, err := q.TasksInProjectByStatus(ctx, dbq.TasksInProjectByStatusParams{
-			ProjectID: nz(projectID), Status: status,
+			ProjectID: projectID, Status: status,
 		})
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
 		}
 	default:
-		rows, err := q.TasksInProject(ctx, nz(projectID))
+		rows, err := q.TasksInProject(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
 		}
 	}
 
@@ -377,7 +377,7 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 }
 
 func listBugs(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := dbq.New(db).BugsByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).BugsByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +387,7 @@ func listBugs(db *sql.DB, projectID int64) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fmtBugLine(int(b.Ord.Int64), b.Date, b.Cause, fix))
+		out = append(out, fmtBugLine(int(b.Ord), b.Date, b.Cause, fix))
 	}
 	return out, nil
 }

@@ -26,7 +26,7 @@ func addFeature(db *sql.DB, projectID int64, name string) (int64, error) {
 		return 0, err
 	}
 	return dbq.New(db).InsertFeature(context.Background(), dbq.InsertFeatureParams{
-		ProjectID: nz(projectID), Ord: nz(int64(ord)), Name: name,
+		ProjectID: projectID, Ord: int64(ord), Name: name,
 	})
 }
 
@@ -34,7 +34,7 @@ func addFeature(db *sql.DB, projectID int64, name string) (int64, error) {
 // dbq.DBTX so it runs on *sql.DB or inside a *sql.Tx.
 func featurePK(q dbq.DBTX, projectID, ord int64) (int64, error) {
 	pk, err := dbq.New(q).FeaturePK(context.Background(), dbq.FeaturePKParams{
-		ProjectID: nz(projectID), Ord: nz(ord),
+		ProjectID: projectID, Ord: ord,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("no feature %d in this project", ord)
@@ -56,7 +56,7 @@ func addInvariant(db *sql.DB, projectID int64, text string) (int64, error) {
 		return 0, err
 	}
 	if err := dbq.New(db).InsertInvariant(context.Background(), dbq.InsertInvariantParams{
-		ProjectID: nz(projectID), Ord: nz(int64(ord)), Text: text,
+		ProjectID: projectID, Ord: int64(ord), Text: text,
 	}); err != nil {
 		return 0, err
 	}
@@ -65,7 +65,7 @@ func addInvariant(db *sql.DB, projectID int64, text string) (int64, error) {
 
 func addInterface(db *sql.DB, projectID int64, kind, name, sig string) (int64, error) {
 	return dbq.New(db).InsertInterface(context.Background(), dbq.InsertInterfaceParams{
-		ProjectID: nz(projectID), Kind: kind, Name: name, Sig: sig,
+		ProjectID: projectID, Kind: kind, Name: name, Sig: sig,
 	})
 }
 
@@ -84,7 +84,7 @@ func addTask(db *sql.DB, projectID, featurePK int64, text string, cites []string
 		return 0, err
 	}
 	taskID, err := dbq.New(tx).InsertTask(context.Background(), dbq.InsertTaskParams{
-		FeatureID: featurePK, Ord: nz(int64(ord)), Text: text,
+		FeatureID: featurePK, Ord: int64(ord), Text: text,
 	})
 	if err != nil {
 		return 0, err
@@ -112,7 +112,7 @@ func insertCite(tx *sql.Tx, projectID, taskID int64, cite string) error {
 		if err != nil {
 			return fmt.Errorf("bad invariant cite %q", cite)
 		}
-		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: projectID, Ord: int64(ord)})
 		if err != nil {
 			return fmt.Errorf("unknown invariant cite %q in this project", cite)
 		}
@@ -121,7 +121,7 @@ func insertCite(tx *sql.Tx, projectID, taskID int64, cite string) error {
 		}
 	case strings.HasPrefix(cite, "I."):
 		name := cite[2:]
-		ifaceID, err := q.InterfaceIDByName(ctx, dbq.InterfaceIDByNameParams{ProjectID: nz(projectID), Name: name})
+		ifaceID, err := q.InterfaceIDByName(ctx, dbq.InterfaceIDByNameParams{ProjectID: projectID, Name: name})
 		if err != nil {
 			return fmt.Errorf("unknown interface cite %q in this project", cite)
 		}
@@ -150,7 +150,7 @@ func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (
 	ctx := context.Background()
 	q := dbq.New(tx)
 	bugID, err := q.InsertBug(ctx, dbq.InsertBugParams{
-		ProjectID: nz(projectID), Ord: nz(int64(ord)), Date: date, Cause: cause,
+		ProjectID: projectID, Ord: int64(ord), Date: date, Cause: cause,
 	})
 	if err != nil {
 		return 0, err
@@ -160,7 +160,7 @@ func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (
 		if err != nil {
 			return 0, fmt.Errorf("bad fix invariant %q", ref)
 		}
-		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(n))})
+		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: projectID, Ord: int64(n)})
 		if err != nil {
 			return 0, fmt.Errorf("unknown fix invariant %q in this project", ref)
 		}
@@ -220,7 +220,7 @@ func newNewFeatureCmd() *cobra.Command {
 					return "", err
 				}
 				ord, _ := dbq.New(db).FeatureOrdByID(context.Background(), pk)
-				return fmt.Sprintf("%d", ord.Int64), nil
+				return fmt.Sprintf("%d", ord), nil
 			})
 		},
 	}
@@ -286,7 +286,7 @@ func newAddTaskCmd() *cobra.Command {
 					return "", err
 				}
 				ord, _ := dbq.New(db).TaskOrdByID(context.Background(), taskPK)
-				return fmt.Sprintf("T%d", ord.Int64), nil
+				return fmt.Sprintf("T%d", ord), nil
 			})
 		},
 	}

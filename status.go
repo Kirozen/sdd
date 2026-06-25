@@ -16,7 +16,7 @@ import (
 func statusReport(db *sql.DB, projectID int64) ([]string, error) {
 	ctx := context.Background()
 	q := dbq.New(db)
-	feats, err := q.FeaturesByProject(ctx, nz(projectID))
+	feats, err := q.FeaturesByProject(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -36,25 +36,25 @@ func statusReport(db *sql.DB, projectID int64) ([]string, error) {
 			return nil, err
 		}
 		// V34: stage appended AFTER the counts; counts substring + V19 lines unchanged.
-		out = append(out, fmt.Sprintf("F%d %s  x:%d ~:%d .:%d [%s]", int(f.Ord.Int64), f.Name, c["x"], c["~"], c["."], stage))
+		out = append(out, fmt.Sprintf("F%d %s  x:%d ~:%d .:%d [%s]", int(f.Ord), f.Name, c["x"], c["~"], c["."], stage))
 	}
 
 	// V19: flag every task in this project citing a deprecated interface.
-	warnings, err := q.DeprecatedCiteWarnings(ctx, nz(projectID))
+	warnings, err := q.DeprecatedCiteWarnings(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for _, w := range warnings {
-		out = append(out, fmt.Sprintf("! T%d cites deprecated I.%s", int(w.Ord.Int64), w.Name))
+		out = append(out, fmt.Sprintf("! T%d cites deprecated I.%s", int(w.Ord), w.Name))
 	}
 
 	// V37: flag every feature carrying at least one open unknown (non-blocking).
-	openUnknowns, err := q.OpenUnknownFeatures(ctx, nz(projectID))
+	openUnknowns, err := q.OpenUnknownFeatures(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 	for _, u := range openUnknowns {
-		out = append(out, fmt.Sprintf("! F%d %s: %d unknowns ouverts", int(u.Ord.Int64), u.Name, u.N))
+		out = append(out, fmt.Sprintf("! F%d %s: %d unknowns ouverts", int(u.Ord), u.Name, u.N))
 	}
 	return out, nil
 }

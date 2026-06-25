@@ -31,7 +31,7 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 	switch {
 	case strings.HasPrefix(ref, "I."):
 		name := ref[2:]
-		r, err := q.ShowInterface(ctx, dbq.ShowInterfaceParams{ProjectID: nz(projectID), Name: name})
+		r, err := q.ShowInterface(ctx, dbq.ShowInterfaceParams{ProjectID: projectID, Name: name})
 		if err != nil {
 			return "", fmt.Errorf("no interface %q in this project", ref)
 		}
@@ -42,7 +42,7 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		text, err := q.ShowInvariant(ctx, dbq.ShowInvariantParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		text, err := q.ShowInvariant(ctx, dbq.ShowInvariantParams{ProjectID: projectID, Ord: int64(ord)})
 		if err != nil {
 			return "", fmt.Errorf("no invariant %q in this project", ref)
 		}
@@ -53,7 +53,7 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		r, err := q.ShowTask(ctx, dbq.ShowTaskParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		r, err := q.ShowTask(ctx, dbq.ShowTaskParams{ProjectID: projectID, Ord: int64(ord)})
 		if err != nil {
 			return "", fmt.Errorf("no task %q in this project", ref)
 		}
@@ -68,7 +68,7 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		r, err := q.ShowBug(ctx, dbq.ShowBugParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		r, err := q.ShowBug(ctx, dbq.ShowBugParams{ProjectID: projectID, Ord: int64(ord)})
 		if err != nil {
 			return "", fmt.Errorf("no bug %q in this project", ref)
 		}
@@ -83,7 +83,7 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		r, err := q.ShowResearch(ctx, dbq.ShowResearchParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		r, err := q.ShowResearch(ctx, dbq.ShowResearchParams{ProjectID: projectID, Ord: int64(ord)})
 		if err != nil {
 			return "", fmt.Errorf("no research %q in this project", ref)
 		}

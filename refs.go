@@ -22,7 +22,7 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 	switch {
 	case strings.HasPrefix(ref, "I."):
 		name := ref[2:]
-		iid, err := q.InterfaceIDByName(ctx, dbq.InterfaceIDByNameParams{ProjectID: nz(projectID), Name: name})
+		iid, err := q.InterfaceIDByName(ctx, dbq.InterfaceIDByNameParams{ProjectID: projectID, Name: name})
 		if err != nil {
 			return nil, fmt.Errorf("no interface %q in this project", ref)
 		}
@@ -37,7 +37,7 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		iid, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		iid, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: projectID, Ord: int64(ord)})
 		if err != nil {
 			return nil, fmt.Errorf("no invariant %q in this project", ref)
 		}
@@ -66,11 +66,11 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 
 // citerLines renders each citer ordinal as a "<prefix><ord>" ref through showRef
 // (reusing V18 formatting, scoped to projectID). ords come from the generated
-// citer queries (nullable column → sql.NullInt64, always set in practice).
-func citerLines(db *sql.DB, projectID int64, ords []sql.NullInt64, prefix string) ([]string, error) {
+// citer queries as plain int64 (the ord override, non-null by V26).
+func citerLines(db *sql.DB, projectID int64, ords []int64, prefix string) ([]string, error) {
 	var out []string
 	for _, o := range ords {
-		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, o.Int64))
+		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, o))
 		if err != nil {
 			return nil, err
 		}

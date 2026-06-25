@@ -1,11 +1,27 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+// V57: project_id and ord are non-null int64 across the generated query layer
+// (the sqlc *.project_id / *.ord overrides), reflecting V20/V26. No sql.NullInt64
+// leaks into the query API and no nz()-style wrapping is needed at any call-site;
+// a NULL would fail loudly at scan. Reverting the override would reintroduce the
+// ~130 wrap/unwrap sites the deepen pass removed — this keeps it gone.
+func TestGeneratedScopeIsNonNull(t *testing.T) {
+	b, err := os.ReadFile("db/query.sql.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte("sql.NullInt64")) {
+		t.Error("db/query.sql.go contains sql.NullInt64 — project_id/ord must stay non-null int64 (overrides, V57)")
+	}
+}
 
 // rawSQLCall matches a hand-written database/sql execution call.
 var rawSQLCall = regexp.MustCompile(`\.(Query|QueryRow|Exec)(Context)?\(`)

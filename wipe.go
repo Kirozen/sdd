@@ -15,7 +15,7 @@ import (
 // untouched (V4).
 func wipeFeature(db *sql.DB, projectID, featureOrd int64) error {
 	n, err := dbq.New(db).WipeFeature(context.Background(), dbq.WipeFeatureParams{
-		ProjectID: nz(projectID), Ord: nz(featureOrd),
+		ProjectID: projectID, Ord: featureOrd,
 	})
 	if err != nil {
 		return err

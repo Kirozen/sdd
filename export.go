@@ -16,11 +16,6 @@ const (
 	generatedHead = "<!-- GENERATED — DO NOT EDIT -->"
 )
 
-// nz wraps a never-null int64 (project/feature id, ordinal) as the sql.NullInt64
-// the generated queries take: project_id/ord are nullable columns in the schema
-// but always set in practice (V20, V26). Shared by every sqlc call-site.
-func nz(i int64) sql.NullInt64 { return sql.NullInt64{Int64: i, Valid: true} }
-
 // esc escapes a literal pipe so it survives a pipe-table cell.
 func esc(s string) string { return strings.ReplaceAll(s, "|", `\|`) }
 
@@ -75,7 +70,7 @@ func renderSpec(db *sql.DB, projectID int64) (string, error) {
 }
 
 func renderInterfaces(db *sql.DB, projectID int64, b *strings.Builder) error {
-	rows, err := dbq.New(db).InterfacesByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).InterfacesByProject(context.Background(), projectID)
 	if err != nil {
 		return err
 	}
@@ -87,31 +82,31 @@ func renderInterfaces(db *sql.DB, projectID int64, b *strings.Builder) error {
 }
 
 func renderResearch(db *sql.DB, projectID int64, b *strings.Builder) error {
-	rows, err := dbq.New(db).ResearchByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).ResearchByProject(context.Background(), projectID)
 	if err != nil {
 		return err
 	}
 	b.WriteString("\n## §R RESEARCH\nid|topic|finding|src\n")
 	for _, r := range rows {
-		fmt.Fprintln(b, fmtResearchLine(int(r.Ord.Int64), r.Topic, r.Finding, r.Src))
+		fmt.Fprintln(b, fmtResearchLine(int(r.Ord), r.Topic, r.Finding, r.Src))
 	}
 	return nil
 }
 
 func renderInvariants(db *sql.DB, projectID int64, b *strings.Builder) error {
-	rows, err := dbq.New(db).InvariantsByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).InvariantsByProject(context.Background(), projectID)
 	if err != nil {
 		return err
 	}
 	b.WriteString("\n## §V INVARIANTS\n")
 	for _, r := range rows {
-		fmt.Fprintln(b, fmtInvariantLine(int(r.Ord.Int64), r.Text))
+		fmt.Fprintln(b, fmtInvariantLine(int(r.Ord), r.Text))
 	}
 	return nil
 }
 
 func renderBugs(db *sql.DB, projectID int64, b *strings.Builder) error {
-	rows, err := dbq.New(db).BugsByProject(context.Background(), nz(projectID))
+	rows, err := dbq.New(db).BugsByProject(context.Background(), projectID)
 	if err != nil {
 		return err
 	}
@@ -121,7 +116,7 @@ func renderBugs(db *sql.DB, projectID int64, b *strings.Builder) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(b, fmtBugLine(int(r.Ord.Int64), r.Date, r.Cause, fix))
+		fmt.Fprintln(b, fmtBugLine(int(r.Ord), r.Date, r.Cause, fix))
 	}
 	return nil
 }
@@ -137,18 +132,18 @@ func bugFix(db *sql.DB, bugPK int64) (string, error) {
 	}
 	parts := make([]string, len(ords))
 	for i, o := range ords {
-		parts[i] = fmt.Sprintf("V%d", o.Int64)
+		parts[i] = fmt.Sprintf("V%d", o)
 	}
 	return strings.Join(parts, ","), nil
 }
 
 func renderFeatures(db *sql.DB, projectID int64, b *strings.Builder) error {
-	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), projectID)
 	if err != nil {
 		return err
 	}
 	for _, f := range feats {
-		fmt.Fprintf(b, "\n## FEATURE %d: %s\n", int(f.Ord.Int64), f.Name)
+		fmt.Fprintf(b, "\n## FEATURE %d: %s\n", int(f.Ord), f.Name)
 		if err := renderGoals(db, b, f.ID); err != nil {
 			return err
 		}
@@ -199,7 +194,7 @@ func renderTasks(db *sql.DB, b *strings.Builder, featurePK int64) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(b, fmtTaskLine(int(t.Ord.Int64), t.Status, t.Text, cites))
+		fmt.Fprintln(b, fmtTaskLine(int(t.Ord), t.Status, t.Text, cites))
 	}
 	return nil
 }
@@ -216,7 +211,7 @@ func taskCites(db *sql.DB, taskPK int64) (string, error) {
 		return "", err
 	}
 	for _, o := range invOrds {
-		parts = append(parts, fmt.Sprintf("V%d", o.Int64))
+		parts = append(parts, fmt.Sprintf("V%d", o))
 	}
 
 	names, err := q.TaskCiteIfaceNames(ctx, taskPK)

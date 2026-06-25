@@ -16,17 +16,13 @@ func addResearch(db *sql.DB, projectID int64, topic, finding, src string) (int64
 		return 0, err
 	}
 	if err := dbq.New(db).InsertResearch(context.Background(), dbq.InsertResearchParams{
-		ProjectID: nz(projectID), Ord: nz(int64(ord)), Topic: topic, Finding: finding, Src: src,
+		ProjectID: projectID, Ord: int64(ord), Topic: topic, Finding: finding, Src: src,
 	}); err != nil {
 		return 0, err
 	}
 	return int64(ord), nil
 }
 
-// editRow updates a row's primary text field in place, addressing it within the
-// current project: by per-project ordinal (invariant/bug/research/task), by name
-// (interface), or by global id (goal/constraint, which carry no display number).
-// The row id is never changed, so citations stay valid (V12).
 // editRow updates a row's primary text field by the right typed query per kind
 // (V50: no interpolated table/column). The row id never changes, so citations
 // stay valid (V12); n==0 means the addressed row is absent in this project.
@@ -45,20 +41,20 @@ func editRow(db *sql.DB, projectID int64, kind, key, text string) error {
 		}
 		switch kind {
 		case "invariant":
-			n, err = q.EditInvariant(ctx, dbq.EditInvariantParams{Text: text, ProjectID: nz(projectID), Ord: nz(int64(ord))})
+			n, err = q.EditInvariant(ctx, dbq.EditInvariantParams{Text: text, ProjectID: projectID, Ord: int64(ord)})
 		case "research":
-			n, err = q.EditResearch(ctx, dbq.EditResearchParams{Finding: text, ProjectID: nz(projectID), Ord: nz(int64(ord))})
+			n, err = q.EditResearch(ctx, dbq.EditResearchParams{Finding: text, ProjectID: projectID, Ord: int64(ord)})
 		case "bug":
-			n, err = q.EditBug(ctx, dbq.EditBugParams{Cause: text, ProjectID: nz(projectID), Ord: nz(int64(ord))})
+			n, err = q.EditBug(ctx, dbq.EditBugParams{Cause: text, ProjectID: projectID, Ord: int64(ord)})
 		}
 	case "task":
 		ord, e := strconv.Atoi(key)
 		if e != nil {
 			return fmt.Errorf("bad task ordinal %q", key)
 		}
-		n, err = q.EditTask(ctx, dbq.EditTaskParams{Text: text, Ord: nz(int64(ord)), ProjectID: nz(projectID)})
+		n, err = q.EditTask(ctx, dbq.EditTaskParams{Text: text, Ord: int64(ord), ProjectID: projectID})
 	case "interface":
-		n, err = q.EditInterfaceSig(ctx, dbq.EditInterfaceSigParams{Sig: text, ProjectID: nz(projectID), Name: key})
+		n, err = q.EditInterfaceSig(ctx, dbq.EditInterfaceSigParams{Sig: text, ProjectID: projectID, Name: key})
 	case "goal", "constraint":
 		id, e := strconv.ParseInt(key, 10, 64)
 		if e != nil {
@@ -85,7 +81,7 @@ func editRow(db *sql.DB, projectID int64, kind, key, text string) error {
 // Interfaces are never hard-deleted; deprecation preserves history (V11).
 func deprecateInterface(db *sql.DB, projectID int64, name string) error {
 	n, err := dbq.New(db).DeprecateInterface(context.Background(), dbq.DeprecateInterfaceParams{
-		ProjectID: nz(projectID), Name: name,
+		ProjectID: projectID, Name: name,
 	})
 	if err != nil {
 		return err

@@ -33,7 +33,7 @@ func skillForStage(stage string) string {
 // per feature pointing at the next move. An empty project points at the grill.
 // Read-pure (V16); scoped to the project (V20).
 func guideReport(db *sql.DB, projectID int64) ([]string, error) {
-	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func guideReport(db *sql.DB, projectID int64) ([]string, error) {
 				next = "blocked: re-spec then re-review (no-go)"
 			}
 		}
-		out = append(out, fmt.Sprintf("F%d %s  [%s] → %s", int(f.Ord.Int64), f.Name, stage, next))
+		out = append(out, fmt.Sprintf("F%d %s  [%s] → %s", int(f.Ord), f.Name, stage, next))
 	}
 	return out, nil
 }
