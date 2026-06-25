@@ -1,0 +1,15 @@
+# sqlc config (F8 sqlc-data-layer). Codegen is build-time only; sqlc never runs
+# migrations (V52). The schema dir holds the SAME .sql DDL the runtime migrator
+# embeds via go:embed, so sqlc's schema == the runtime schema (V51). Regenerate
+# with `go tool sqlc generate`; the gate runs it + `git diff --exit-code` (V54).
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "db/schema"      # ordered DDL files, applied in filename order (T54)
+    queries: "db/query.sql"  # every named query that replaces hand-written SQL (T55, V50)
+    gen:
+      go:
+        package: "db"
+        out: "db"
+        sql_package: "database/sql"  # driver-agnostic; works with modernc.org/sqlite
+        emit_empty_slices: true      # :many returns []T{} not nil — matches range-over-rows

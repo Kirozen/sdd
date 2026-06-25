@@ -13,10 +13,25 @@ go build -o sdd .              # build the CLI
 go test ./...                  # run all tests (one package, ~100 tests)
 go test -run TestMigrateChainV2toV4   # single test by name
 go vet ./...                   # lint
+go tool sqlc generate          # regenerate the db/ query package from db/schema + db/query.sql
 ```
 
 Tests use the real cobra root in temp dirs against a temp XDG store — no mocks. There is
-no CI config; `go test ./...` + `go vet ./...` is the full gate.
+no CI config; the full gate is `go test ./...` + `go vet ./...` **plus**
+`go tool sqlc generate && git diff --exit-code` — generated code that is stale or
+uncommitted fails the gate (V54), since `go test`/`go vet` alone do not see a stale codegen.
+
+## sqlc data layer (F8)
+
+`sqlc` is pinned as a tool dependency (the `tool` directive in `go.mod`); run it via
+`go tool sqlc`, never a global install, so the version is reproducible. It generates the
+typed query package under `db/` from `db/query.sql` against the DDL in `db/schema/`.
+**sqlc is build-time only — it never runs migrations** (V52); the runtime schema is still
+driven by `userVersion` + the `migrations` map in `schema.go`. The DDL in `db/schema/*.sql`
+is the *single source* the runtime migrator embeds via `go:embed` AND sqlc reads for
+codegen, so the codegen schema and the runtime schema cannot diverge (V51). All SQL lives
+in `db/query.sql` as named queries; no hand-written SQL string literal survives in command
+or render code (V50).
 
 ## Architecture
 
