@@ -1,0 +1,39 @@
+# Release config for the sdd Claude plugin binary (F16 T88, V84/V85).
+# Pure-Go build (modernc.org/sqlite, CGO_ENABLED=0) -> trivial cross-compile.
+# Emits raw per-platform binaries named sdd_<os>_<arch> + a SHA256SUMS file;
+# the SessionStart provisioning hook (scripts/ensure-sdd-binary.sh) consumes them.
+version: 2
+project_name: sdd
+
+builds:
+  - id: sdd
+    main: .
+    binary: sdd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: sdd
+    # raw binaries, not tarballs -> the hook downloads one asset + verifies it.
+    formats:
+      - binary
+    name_template: "sdd_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "SHA256SUMS"
+  algorithm: sha256
+
+release:
+  github:
+    owner: Kirozen
+    name: sdd
