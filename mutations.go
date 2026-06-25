@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -23,30 +25,29 @@ func addFeature(db *sql.DB, projectID int64, name string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	res, err := db.Exec(`INSERT INTO feature(project_id, ord, name) VALUES(?, ?, ?)`, projectID, ord, name)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	return dbq.New(db).InsertFeature(context.Background(), dbq.InsertFeatureParams{
+		ProjectID: nz(projectID), Ord: nz(int64(ord)), Name: name,
+	})
 }
 
-// featurePK resolves a feature's per-project ordinal to its global PK.
-func featurePK(q queryer, projectID, ord int64) (int64, error) {
-	var pk int64
-	if err := q.QueryRow(`SELECT id FROM feature WHERE project_id=? AND ord=?`, projectID, ord).Scan(&pk); err != nil {
+// featurePK resolves a feature's per-project ordinal to its global PK. Accepts
+// dbq.DBTX so it runs on *sql.DB or inside a *sql.Tx.
+func featurePK(q dbq.DBTX, projectID, ord int64) (int64, error) {
+	pk, err := dbq.New(q).FeaturePK(context.Background(), dbq.FeaturePKParams{
+		ProjectID: nz(projectID), Ord: nz(ord),
+	})
+	if err != nil {
 		return 0, fmt.Errorf("no feature %d in this project", ord)
 	}
 	return pk, nil
 }
 
 func addGoal(db *sql.DB, featurePK int64, text string) error {
-	_, err := db.Exec(`INSERT INTO goal(feature_id, text) VALUES(?, ?)`, featurePK, text)
-	return err
+	return dbq.New(db).InsertGoal(context.Background(), dbq.InsertGoalParams{FeatureID: featurePK, Text: text})
 }
 
 func addConstraint(db *sql.DB, featurePK int64, text string) error {
-	_, err := db.Exec(`INSERT INTO "constraint"(feature_id, text) VALUES(?, ?)`, featurePK, text)
-	return err
+	return dbq.New(db).InsertConstraint(context.Background(), dbq.InsertConstraintParams{FeatureID: featurePK, Text: text})
 }
 
 func addInvariant(db *sql.DB, projectID int64, text string) (int64, error) {
@@ -54,18 +55,18 @@ func addInvariant(db *sql.DB, projectID int64, text string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if _, err := db.Exec(`INSERT INTO invariant(project_id, ord, text) VALUES(?, ?, ?)`, projectID, ord, text); err != nil {
+	if err := dbq.New(db).InsertInvariant(context.Background(), dbq.InsertInvariantParams{
+		ProjectID: nz(projectID), Ord: nz(int64(ord)), Text: text,
+	}); err != nil {
 		return 0, err
 	}
 	return int64(ord), nil
 }
 
 func addInterface(db *sql.DB, projectID int64, kind, name, sig string) (int64, error) {
-	res, err := db.Exec(`INSERT INTO interface(project_id, kind, name, sig) VALUES(?, ?, ?, ?)`, projectID, kind, name, sig)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	return dbq.New(db).InsertInterface(context.Background(), dbq.InsertInterfaceParams{
+		ProjectID: nz(projectID), Kind: kind, Name: name, Sig: sig,
+	})
 }
 
 // addTask inserts a task and its cites in one transaction: a single bad cite
@@ -82,11 +83,9 @@ func addTask(db *sql.DB, projectID, featurePK int64, text string, cites []string
 	if err != nil {
 		return 0, err
 	}
-	res, err := tx.Exec(`INSERT INTO task(feature_id, ord, text) VALUES(?, ?, ?)`, featurePK, ord, text)
-	if err != nil {
-		return 0, err
-	}
-	taskID, err := res.LastInsertId()
+	taskID, err := dbq.New(tx).InsertTask(context.Background(), dbq.InsertTaskParams{
+		FeatureID: featurePK, Ord: nz(int64(ord)), Text: text,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -105,26 +104,28 @@ func addTask(db *sql.DB, projectID, featurePK int64, text string, cites []string
 // project (V20): V<ord> → the invariant with that ord, I.<name> → the interface
 // with that name. A cross-project or unknown ord/name finds nothing and rejects.
 func insertCite(tx *sql.Tx, projectID, taskID int64, cite string) error {
+	ctx := context.Background()
+	q := dbq.New(tx)
 	switch {
 	case strings.HasPrefix(cite, "V"):
 		ord, err := strconv.Atoi(cite[1:])
 		if err != nil {
 			return fmt.Errorf("bad invariant cite %q", cite)
 		}
-		var invID int64
-		if err := tx.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, ord).Scan(&invID); err != nil {
+		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return fmt.Errorf("unknown invariant cite %q in this project", cite)
 		}
-		if _, err := tx.Exec(`INSERT INTO task_cites_inv(task_id, inv_id) VALUES(?, ?)`, taskID, invID); err != nil {
+		if err := q.InsertTaskCiteInv(ctx, dbq.InsertTaskCiteInvParams{TaskID: taskID, InvID: invID}); err != nil {
 			return fmt.Errorf("cite %s: %w", cite, err)
 		}
 	case strings.HasPrefix(cite, "I."):
 		name := cite[2:]
-		var ifaceID int64
-		if err := tx.QueryRow(`SELECT id FROM interface WHERE project_id=? AND name=?`, projectID, name).Scan(&ifaceID); err != nil {
+		ifaceID, err := q.InterfaceIDByName(ctx, dbq.InterfaceIDByNameParams{ProjectID: nz(projectID), Name: name})
+		if err != nil {
 			return fmt.Errorf("unknown interface cite %q in this project", cite)
 		}
-		if _, err := tx.Exec(`INSERT INTO task_cites_iface(task_id, iface_id) VALUES(?, ?)`, taskID, ifaceID); err != nil {
+		if err := q.InsertTaskCiteIface(ctx, dbq.InsertTaskCiteIfaceParams{TaskID: taskID, IfaceID: ifaceID}); err != nil {
 			return fmt.Errorf("cite %s: %w", cite, err)
 		}
 	default:
@@ -146,11 +147,11 @@ func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (
 	if err != nil {
 		return 0, err
 	}
-	res, err := tx.Exec(`INSERT INTO bug(project_id, ord, date, cause) VALUES(?, ?, ?, ?)`, projectID, ord, date, cause)
-	if err != nil {
-		return 0, err
-	}
-	bugID, err := res.LastInsertId()
+	ctx := context.Background()
+	q := dbq.New(tx)
+	bugID, err := q.InsertBug(ctx, dbq.InsertBugParams{
+		ProjectID: nz(projectID), Ord: nz(int64(ord)), Date: date, Cause: cause,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -159,11 +160,11 @@ func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (
 		if err != nil {
 			return 0, fmt.Errorf("bad fix invariant %q", ref)
 		}
-		var invID int64
-		if err := tx.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, n).Scan(&invID); err != nil {
+		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(n))})
+		if err != nil {
 			return 0, fmt.Errorf("unknown fix invariant %q in this project", ref)
 		}
-		if _, err := tx.Exec(`INSERT INTO bug_fix(bug_id, inv_id) VALUES(?, ?)`, bugID, invID); err != nil {
+		if err := q.InsertBugFix(ctx, dbq.InsertBugFixParams{BugID: bugID, InvID: invID}); err != nil {
 			return 0, fmt.Errorf("fix %s: %w", ref, err)
 		}
 	}
@@ -173,22 +174,9 @@ func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (
 	return int64(ord), nil
 }
 
-// splitRefs parses a comma list, dropping blanks and the `-` empty sentinel
-// (FORMAT.md renders "no refs" as `-`).
-func splitRefs(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" && p != "-" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// --- cobra wrappers: resolve project, mutate, re-export (V2) ---
-
-// runMutation opens the global db, resolves the current project, runs fn, and
-// re-exports the project's SPEC.md at the worktree root on success.
+// runMutation opens the global db, resolves the current project, runs the
+// mutation fn inside it, then re-exports SPEC.md atomically (V8). The returned
+// message (if any) is printed on success.
 func runMutation(fn func(*sql.DB, int64) (string, error)) error {
 	db, pid, specFile, err := openProjectContext()
 	if err != nil {
@@ -208,6 +196,18 @@ func runMutation(fn func(*sql.DB, int64) (string, error)) error {
 	return nil
 }
 
+// splitRefs parses a comma list of cite refs, dropping blanks and the "-"
+// sentinel (so an empty cites column round-trips to no cites, B1/V15).
+func splitRefs(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" && p != "-" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func newNewFeatureCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "new-feature <name>",
@@ -219,9 +219,8 @@ func newNewFeatureCmd() *cobra.Command {
 				if err != nil {
 					return "", err
 				}
-				var ord int
-				db.QueryRow(`SELECT ord FROM feature WHERE id=?`, pk).Scan(&ord)
-				return fmt.Sprintf("%d", ord), nil
+				ord, _ := dbq.New(db).FeatureOrdByID(context.Background(), pk)
+				return fmt.Sprintf("%d", ord.Int64), nil
 			})
 		},
 	}
@@ -286,9 +285,8 @@ func newAddTaskCmd() *cobra.Command {
 				if err != nil {
 					return "", err
 				}
-				var ord int
-				db.QueryRow(`SELECT ord FROM task WHERE id=?`, taskPK).Scan(&ord)
-				return fmt.Sprintf("T%d", ord), nil
+				ord, _ := dbq.New(db).TaskOrdByID(context.Background(), taskPK)
+				return fmt.Sprintf("T%d", ord.Int64), nil
 			})
 		},
 	}

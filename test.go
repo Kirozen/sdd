@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -15,12 +17,13 @@ import (
 // same (invariant, name) is a no-op, not an error — UNIQUE(invariant_id,name)
 // plus ON CONFLICT DO NOTHING (V42).
 func addTest(db *sql.DB, projectID, invOrd int64, name string) error {
-	var invPK int64
-	if err := db.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, invOrd).Scan(&invPK); err != nil {
+	q := dbq.New(db)
+	ctx := context.Background()
+	invPK, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(invOrd)})
+	if err != nil {
 		return fmt.Errorf("no invariant V%d in this project", invOrd)
 	}
-	_, err := db.Exec(`INSERT INTO test(invariant_id, name) VALUES(?, ?) ON CONFLICT(invariant_id, name) DO NOTHING`, invPK, name)
-	return err
+	return q.InsertTest(ctx, dbq.InsertTestParams{InvariantID: invPK, Name: name})
 }
 
 // parseInvariantRef reads a V<n> reference (the V is optional) into its ordinal.

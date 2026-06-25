@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +15,9 @@ func addResearch(db *sql.DB, projectID int64, topic, finding, src string) (int64
 	if err != nil {
 		return 0, err
 	}
-	if _, err := db.Exec(`INSERT INTO research(project_id, ord, topic, finding, src) VALUES(?, ?, ?, ?, ?)`, projectID, ord, topic, finding, src); err != nil {
+	if err := dbq.New(db).InsertResearch(context.Background(), dbq.InsertResearchParams{
+		ProjectID: nz(projectID), Ord: nz(int64(ord)), Topic: topic, Finding: finding, Src: src,
+	}); err != nil {
 		return 0, err
 	}
 	return int64(ord), nil
@@ -23,45 +27,51 @@ func addResearch(db *sql.DB, projectID int64, topic, finding, src string) (int64
 // current project: by per-project ordinal (invariant/bug/research/task), by name
 // (interface), or by global id (goal/constraint, which carry no display number).
 // The row id is never changed, so citations stay valid (V12).
+// editRow updates a row's primary text field by the right typed query per kind
+// (V50: no interpolated table/column). The row id never changes, so citations
+// stay valid (V12); n==0 means the addressed row is absent in this project.
 func editRow(db *sql.DB, projectID int64, kind, key, text string) error {
-	var q string
-	var args []any
+	ctx := context.Background()
+	q := dbq.New(db)
+	var (
+		n   int64
+		err error
+	)
 	switch kind {
 	case "invariant", "research", "bug":
-		col := map[string]string{"invariant": "text", "research": "finding", "bug": "cause"}[kind]
-		ord, err := strconv.Atoi(key)
-		if err != nil {
+		ord, e := strconv.Atoi(key)
+		if e != nil {
 			return fmt.Errorf("bad %s ordinal %q", kind, key)
 		}
-		q = fmt.Sprintf(`UPDATE %s SET %s=? WHERE project_id=? AND ord=?`, kind, col)
-		args = []any{text, projectID, ord}
+		switch kind {
+		case "invariant":
+			n, err = q.EditInvariant(ctx, dbq.EditInvariantParams{Text: text, ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		case "research":
+			n, err = q.EditResearch(ctx, dbq.EditResearchParams{Finding: text, ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		case "bug":
+			n, err = q.EditBug(ctx, dbq.EditBugParams{Cause: text, ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		}
 	case "task":
-		ord, err := strconv.Atoi(key)
-		if err != nil {
+		ord, e := strconv.Atoi(key)
+		if e != nil {
 			return fmt.Errorf("bad task ordinal %q", key)
 		}
-		q = `UPDATE task SET text=? WHERE ord=? AND feature_id IN (SELECT id FROM feature WHERE project_id=?)`
-		args = []any{text, ord, projectID}
+		n, err = q.EditTask(ctx, dbq.EditTaskParams{Text: text, Ord: nz(int64(ord)), ProjectID: nz(projectID)})
 	case "interface":
-		q = `UPDATE interface SET sig=? WHERE project_id=? AND name=?`
-		args = []any{text, projectID, key}
+		n, err = q.EditInterfaceSig(ctx, dbq.EditInterfaceSigParams{Sig: text, ProjectID: nz(projectID), Name: key})
 	case "goal", "constraint":
-		tbl := map[string]string{"goal": "goal", "constraint": `"constraint"`}[kind]
-		id, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
+		id, e := strconv.ParseInt(key, 10, 64)
+		if e != nil {
 			return fmt.Errorf("bad %s id %q", kind, key)
 		}
-		q = fmt.Sprintf(`UPDATE %s SET text=? WHERE id=?`, tbl)
-		args = []any{text, id}
+		if kind == "goal" {
+			n, err = q.EditGoal(ctx, dbq.EditGoalParams{Text: text, ID: id})
+		} else {
+			n, err = q.EditConstraint(ctx, dbq.EditConstraintParams{Text: text, ID: id})
+		}
 	default:
 		return fmt.Errorf("unknown kind %q", kind)
 	}
-
-	res, err := db.Exec(q, args...)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
 	if err != nil {
 		return err
 	}
@@ -74,11 +84,9 @@ func editRow(db *sql.DB, projectID int64, kind, key, text string) error {
 // deprecateInterface flips an interface to deprecated within the project.
 // Interfaces are never hard-deleted; deprecation preserves history (V11).
 func deprecateInterface(db *sql.DB, projectID int64, name string) error {
-	res, err := db.Exec(`UPDATE interface SET status='deprecated' WHERE project_id=? AND name=?`, projectID, name)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
+	n, err := dbq.New(db).DeprecateInterface(context.Background(), dbq.DeprecateInterfaceParams{
+		ProjectID: nz(projectID), Name: name,
+	})
 	if err != nil {
 		return err
 	}

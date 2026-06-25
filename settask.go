@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -12,11 +14,9 @@ import (
 // The schema CHECK rejects any value outside {.,~,x} (V10); an unknown task is
 // an error.
 func setTaskStatus(db *sql.DB, projectID, taskOrd int64, status string) error {
-	res, err := db.Exec(`UPDATE task SET status=? WHERE ord=? AND feature_id IN (SELECT id FROM feature WHERE project_id=?)`, status, taskOrd, projectID)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
+	n, err := dbq.New(db).SetTaskStatus(context.Background(), dbq.SetTaskStatusParams{
+		Status: status, Ord: nz(taskOrd), ProjectID: nz(projectID),
+	})
 	if err != nil {
 		return err
 	}

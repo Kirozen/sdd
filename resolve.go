@@ -12,14 +12,6 @@ import (
 	dbq "github.com/kirozen/sdd/db"
 )
 
-// queryer is the shared surface of *sql.DB and *sql.Tx, so the remaining cite/PK
-// helpers work both inside and outside a transaction. The generated dbq.DBTX
-// plays the same role for sqlc methods (and is satisfied by both too).
-type queryer interface {
-	QueryRow(query string, args ...any) *sql.Row
-	Exec(query string, args ...any) (sql.Result, error)
-}
-
 // openProjectContext opens the global db and resolves the current project from
 // cwd, returning the worktree-root SPEC.md path for export/check (V22, V23).
 func openProjectContext() (*sql.DB, int64, string, error) {

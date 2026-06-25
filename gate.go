@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 	"time"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -19,19 +21,18 @@ func setGate(db *sql.DB, projectID, featOrd int64, verdict, note string) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(`
-		INSERT INTO gate(feature_id, verdict, note, recorded_at) VALUES(?, ?, ?, ?)
-		ON CONFLICT(feature_id) DO UPDATE SET
-			verdict=excluded.verdict, note=excluded.note, recorded_at=excluded.recorded_at`,
-		pk, verdict, note, time.Now().UTC().Format(time.RFC3339))
-	return err
+	return dbq.New(db).UpsertGate(context.Background(), dbq.UpsertGateParams{
+		FeatureID: pk, Verdict: verdict,
+		Note:       sql.NullString{String: note, Valid: true},
+		RecordedAt: time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 // featureGate returns a feature's recorded verdict, has=false when none exists.
 func featureGate(db *sql.DB, featurePK int64) (verdict string, has bool, err error) {
-	switch e := db.QueryRow(`SELECT verdict FROM gate WHERE feature_id=?`, featurePK).Scan(&verdict); e {
+	switch v, e := dbq.New(db).GateVerdict(context.Background(), featurePK); e {
 	case nil:
-		return verdict, true, nil
+		return v, true, nil
 	case sql.ErrNoRows:
 		return "", false, nil
 	default:

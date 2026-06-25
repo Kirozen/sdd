@@ -1,19 +1,20 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
 // nextUnknownOrd is the next per-project display ordinal U<n> for unknowns,
 // whose project is reached through their feature (V26, like nextTaskOrd).
 func nextUnknownOrd(db *sql.DB, projectID int64) (int, error) {
-	var n int
-	err := db.QueryRow(`SELECT COALESCE(MAX(u.ord),0)+1 FROM unknown u JOIN feature f ON f.id=u.feature_id WHERE f.project_id=?`, projectID).Scan(&n)
-	return n, err
+	n, err := dbq.New(db).NextUnknownOrd(context.Background(), nz(projectID))
+	return int(n), err
 }
 
 // addUnknown records a parked question on a feature as an open unknown (V35),
@@ -23,7 +24,9 @@ func addUnknown(db *sql.DB, projectID, featurePK int64, text string) (int, error
 	if err != nil {
 		return 0, err
 	}
-	if _, err := db.Exec(`INSERT INTO unknown(feature_id, ord, text) VALUES(?, ?, ?)`, featurePK, ord, text); err != nil {
+	if err := dbq.New(db).InsertUnknown(context.Background(), dbq.InsertUnknownParams{
+		FeatureID: featurePK, Ord: nz(int64(ord)), Text: text,
+	}); err != nil {
 		return 0, err
 	}
 	return ord, nil
@@ -32,11 +35,9 @@ func addUnknown(db *sql.DB, projectID, featurePK int64, text string) (int, error
 // resolveUnknown marks an unknown resolved by its per-project ordinal, scoped to
 // the project (V20, V26); never hard-deletes (V35). Unknown ordinal → error.
 func resolveUnknown(db *sql.DB, projectID, ord int64) error {
-	res, err := db.Exec(`UPDATE unknown SET status='resolved' WHERE ord=? AND feature_id IN (SELECT id FROM feature WHERE project_id=?)`, ord, projectID)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
+	n, err := dbq.New(db).ResolveUnknown(context.Background(), dbq.ResolveUnknownParams{
+		Ord: nz(ord), ProjectID: nz(projectID),
+	})
 	if err != nil {
 		return err
 	}

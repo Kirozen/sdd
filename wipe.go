@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -12,11 +14,9 @@ import (
 // task rows (and their cite joins). Durable rows and other features are
 // untouched (V4).
 func wipeFeature(db *sql.DB, projectID, featureOrd int64) error {
-	res, err := db.Exec(`DELETE FROM feature WHERE project_id=? AND ord=?`, projectID, featureOrd)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
+	n, err := dbq.New(db).WipeFeature(context.Background(), dbq.WipeFeatureParams{
+		ProjectID: nz(projectID), Ord: nz(featureOrd),
+	})
 	if err != nil {
 		return err
 	}

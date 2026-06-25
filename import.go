@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -209,16 +211,14 @@ func rowID(cell string) (int64, bool) {
 // --- seed ---
 
 func dbEmpty(db *sql.DB, projectID int64) (bool, error) {
-	for _, t := range []string{"invariant", "interface", "bug", "research", "feature"} {
-		var n int
-		if err := db.QueryRow(`SELECT count(*) FROM "`+t+`" WHERE project_id=?`, projectID).Scan(&n); err != nil {
-			return false, err
-		}
-		if n > 0 {
-			return false, nil
-		}
+	n, err := dbq.New(db).ProjectRowCount(context.Background(), dbq.ProjectRowCountParams{
+		ProjectID: nz(projectID), ProjectID_2: nz(projectID), ProjectID_3: nz(projectID),
+		ProjectID_4: nz(projectID), ProjectID_5: nz(projectID),
+	})
+	if err != nil {
+		return false, err
 	}
-	return true, nil
+	return n == 0, nil
 }
 
 // seedDB loads a parsed spec into one project in a single transaction, in
@@ -233,79 +233,80 @@ func seedDB(db *sql.DB, projectID int64, ps *parsedSpec, featureName string, cle
 	}
 	defer tx.Rollback()
 
+	q := dbq.New(tx)
+	ctx := context.Background()
 	if clear {
-		for _, t := range []string{"feature", "bug", "invariant", "interface", "research"} {
-			if _, err := tx.Exec(`DELETE FROM "`+t+`" WHERE project_id=?`, projectID); err != nil {
+		for _, del := range []func(context.Context, sql.NullInt64) error{
+			q.DeleteProjectFeatures, q.DeleteProjectBugs, q.DeleteProjectInvariants,
+			q.DeleteProjectInterfaces, q.DeleteProjectResearch,
+		} {
+			if err := del(ctx, nz(projectID)); err != nil {
 				return err
 			}
 		}
 	}
 
 	for _, inv := range ps.invariants {
-		if _, err := tx.Exec(`INSERT INTO invariant(project_id, ord, text) VALUES(?, ?, ?)`, projectID, inv.id, inv.text); err != nil {
+		if err := q.InsertInvariant(ctx, dbq.InsertInvariantParams{ProjectID: nz(projectID), Ord: nz(int64(inv.id)), Text: inv.text}); err != nil {
 			return fmt.Errorf("invariant V%d: %w", inv.id, err)
 		}
 	}
 	ifaceID := map[string]int64{}
 	for _, f := range ps.interfaces {
-		res, err := tx.Exec(`INSERT INTO interface(project_id, kind, name, sig) VALUES(?, ?, ?, ?)`, projectID, f.kind, f.name, f.sig)
+		id, err := q.InsertInterface(ctx, dbq.InsertInterfaceParams{ProjectID: nz(projectID), Kind: f.kind, Name: f.name, Sig: f.sig})
 		if err != nil {
 			return fmt.Errorf("interface I.%s: %w", f.name, err)
 		}
-		id, _ := res.LastInsertId()
 		ifaceID[f.name] = id
 	}
 	for _, r := range ps.research {
-		if _, err := tx.Exec(`INSERT INTO research(project_id, ord, topic, finding, src) VALUES(?, ?, ?, ?, ?)`, projectID, r.id, r.topic, r.finding, r.src); err != nil {
+		if err := q.InsertResearch(ctx, dbq.InsertResearchParams{ProjectID: nz(projectID), Ord: nz(int64(r.id)), Topic: r.topic, Finding: r.finding, Src: r.src}); err != nil {
 			return fmt.Errorf("research R%d: %w", r.id, err)
 		}
 	}
 	for _, bg := range ps.bugs {
-		res, err := tx.Exec(`INSERT INTO bug(project_id, ord, date, cause) VALUES(?, ?, ?, ?)`, projectID, bg.id, bg.date, bg.cause)
+		bugPK, err := q.InsertBug(ctx, dbq.InsertBugParams{ProjectID: nz(projectID), Ord: nz(int64(bg.id)), Date: bg.date, Cause: bg.cause})
 		if err != nil {
 			return fmt.Errorf("bug B%d: %w", bg.id, err)
 		}
-		bugPK, _ := res.LastInsertId()
 		for _, ref := range bg.fix {
 			n, err := strconv.Atoi(strings.TrimPrefix(ref, "V"))
 			if err != nil {
 				return fmt.Errorf("bug B%d bad fix %q", bg.id, ref)
 			}
-			var invID int64
-			if err := tx.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, n).Scan(&invID); err != nil {
+			invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(n))})
+			if err != nil {
 				return fmt.Errorf("bug B%d fix %s: no such invariant", bg.id, ref)
 			}
-			if _, err := tx.Exec(`INSERT INTO bug_fix(bug_id, inv_id) VALUES(?, ?)`, bugPK, invID); err != nil {
+			if err := q.InsertBugFix(ctx, dbq.InsertBugFixParams{BugID: bugPK, InvID: invID}); err != nil {
 				return fmt.Errorf("bug B%d fix %s: %w", bg.id, ref, err)
 			}
 		}
 	}
 
-	var ford int
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(ord),0)+1 FROM feature WHERE project_id=?`, projectID).Scan(&ford); err != nil {
-		return err
-	}
-	res, err := tx.Exec(`INSERT INTO feature(project_id, ord, name) VALUES(?, ?, ?)`, projectID, ford, featureName)
+	ford, err := q.NextFeatureOrd(ctx, nz(projectID))
 	if err != nil {
 		return err
 	}
-	fid, _ := res.LastInsertId()
+	fid, err := q.InsertFeature(ctx, dbq.InsertFeatureParams{ProjectID: nz(projectID), Ord: nz(ford), Name: featureName})
+	if err != nil {
+		return err
+	}
 	if ps.goal != "" {
-		if _, err := tx.Exec(`INSERT INTO goal(feature_id, text) VALUES(?, ?)`, fid, ps.goal); err != nil {
+		if err := q.InsertGoal(ctx, dbq.InsertGoalParams{FeatureID: fid, Text: ps.goal}); err != nil {
 			return err
 		}
 	}
 	for _, c := range ps.constraints {
-		if _, err := tx.Exec(`INSERT INTO "constraint"(feature_id, text) VALUES(?, ?)`, fid, c); err != nil {
+		if err := q.InsertConstraint(ctx, dbq.InsertConstraintParams{FeatureID: fid, Text: c}); err != nil {
 			return err
 		}
 	}
 	for _, tk := range ps.tasks {
-		res, err := tx.Exec(`INSERT INTO task(feature_id, ord, text, status) VALUES(?, ?, ?, ?)`, fid, tk.id, tk.text, tk.status)
+		taskPK, err := q.InsertTaskFull(ctx, dbq.InsertTaskFullParams{FeatureID: fid, Ord: nz(int64(tk.id)), Text: tk.text, Status: tk.status})
 		if err != nil {
 			return fmt.Errorf("task T%d: %w", tk.id, err)
 		}
-		taskPK, _ := res.LastInsertId()
 		for _, cite := range tk.cites {
 			if err := seedCite(tx, projectID, taskPK, cite, ifaceID); err != nil {
 				return fmt.Errorf("task T%d: %w", tk.id, err)
@@ -317,17 +318,19 @@ func seedDB(db *sql.DB, projectID int64, ps *parsedSpec, featureName string, cle
 }
 
 func seedCite(tx *sql.Tx, projectID, taskPK int64, cite string, ifaceID map[string]int64) error {
+	ctx := context.Background()
+	q := dbq.New(tx)
 	switch {
 	case strings.HasPrefix(cite, "V"):
 		ord, err := strconv.Atoi(cite[1:])
 		if err != nil {
 			return fmt.Errorf("bad cite %q", cite)
 		}
-		var invID int64
-		if err := tx.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, ord).Scan(&invID); err != nil {
+		invID, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return fmt.Errorf("cite %s: no such invariant", cite)
 		}
-		if _, err := tx.Exec(`INSERT INTO task_cites_inv(task_id, inv_id) VALUES(?, ?)`, taskPK, invID); err != nil {
+		if err := q.InsertTaskCiteInv(ctx, dbq.InsertTaskCiteInvParams{TaskID: taskPK, InvID: invID}); err != nil {
 			return fmt.Errorf("cite %s: %w", cite, err)
 		}
 	case strings.HasPrefix(cite, "I."):
@@ -335,7 +338,7 @@ func seedCite(tx *sql.Tx, projectID, taskPK int64, cite string, ifaceID map[stri
 		if !ok {
 			return fmt.Errorf("cite %s: no such interface", cite)
 		}
-		if _, err := tx.Exec(`INSERT INTO task_cites_iface(task_id, iface_id) VALUES(?, ?)`, taskPK, id); err != nil {
+		if err := q.InsertTaskCiteIface(ctx, dbq.InsertTaskCiteIfaceParams{TaskID: taskPK, IfaceID: id}); err != nil {
 			return fmt.Errorf("cite %s: %w", cite, err)
 		}
 	default:
