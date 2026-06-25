@@ -34,8 +34,8 @@ func openV2(t *testing.T) *sql.DB {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if _, err := db.Exec(schemaDDL); err != nil {
-		t.Fatalf("schemaDDL: %v", err)
+	if _, err := db.Exec(steps[0].sql); err != nil {
+		t.Fatalf("base DDL: %v", err)
 	}
 	if _, err := db.Exec("PRAGMA user_version=2;"); err != nil {
 		t.Fatalf("stamp v2: %v", err)

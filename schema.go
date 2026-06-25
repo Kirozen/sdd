@@ -4,13 +4,17 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"io/fs"
+	"regexp"
+	"strconv"
 )
 
-// userVersion anchors schema migrations (V9). Bumped per migration script.
-// v2 adds the global project scope (project table + project_id) and per-project
-// display ordinals (ord). v3 adds the unknown table (parked grill questions).
-// v4 adds the test table (invariant ↔ proving test, V42). v5 adds the gate
-// table (durable per-feature review verdict, V46). v6 indexes every uncovered
+// userVersion anchors schema migrations (V9), kept explicit as the V9 anchor but
+// guarded: it must equal the last derived step's version (V60). v2 adds the
+// global project scope (project table + project_id) and per-project display
+// ordinals (ord). v3 adds the unknown table (parked grill questions). v4 adds
+// the test table (invariant ↔ proving test, V42). v5 adds the gate table
+// (durable per-feature review verdict, V46). v6 indexes every uncovered
 // foreign-key child column (V58).
 const userVersion = 6
 
@@ -34,41 +38,59 @@ func mustDDL(name string) string {
 	return string(b)
 }
 
-// The base v2 schema and each additive step now live in db/schema/*.sql rather
-// than inline string constants, but applySchema/migrate are unchanged: the same
-// strings feed the fresh path and the migration path, so a fresh db is
-// byte-identical to a migrated one by construction (V45). 001_base.sql is the
-// full v2 schema (project scope V20, durable + ephemeral layers, typed FK joins
-// V5); the 00N files are the v(N+1) additive steps.
-var (
-	schemaDDL  = mustDDL("001_base.sql")
-	unknownDDL = mustDDL("002_unknown.sql")
-	testDDL    = mustDDL("003_test.sql")
-	gateDDL    = mustDDL("004_gate.sql")
-	indexDDL   = mustDDL("005_indexes.sql")
-)
-
-// migrations maps each schema version > 2 to its additive DDL step. The same
-// constants feed both applySchema (fresh) and migrate (upgrade), so a fresh db
-// is byte-identical to a migrated one by construction (V45). To add a version,
-// bump userVersion and add one entry — nothing else.
-var migrations = map[int]string{
-	3: unknownDDL,
-	4: testDDL,
-	5: gateDDL,
-	6: indexDDL,
+// ddlStep is one migration step: an embedded db/schema file's DDL paired with
+// the schema version it produces (V59).
+type ddlStep struct {
+	version int
+	sql     string
 }
 
-// applySchema creates all tables and stamps user_version (V9 migration anchor).
-// It lays the base schema then every additive step in version order, so a fresh
-// db carries exactly what a fully-migrated one does (V45).
-func applySchema(db *sql.DB) error {
-	if _, err := db.Exec(schemaDDL); err != nil {
-		return fmt.Errorf("apply schema: %w", err)
+// schemaFileRe is the filename contract schemaSteps derives versions from: a
+// 3-digit zero-padded prefix, then "_<name>.sql" (V60).
+var schemaFileRe = regexp.MustCompile(`^(\d{3})_.*\.sql$`)
+
+// schemaSteps derives the ordered migration chain from the embedded db/schema
+// files rather than a hand-kept map (V59): fs.ReadDir returns them sorted by
+// name, and file 00N_*.sql produces schema version N+1 (001_base = v2). It
+// ENFORCES the filename contract it trusts (V60), panicking on any violation —
+// a build-time wiring error like mustDDL: every entry matches schemaFileRe and
+// the prefixes are contiguous from 001 (no gap, no missing base). That
+// contiguity is what makes "last step == file count + 1" hold, so a
+// forgotten/renamed file is caught here, never silently mis-stamped.
+func schemaSteps() []ddlStep {
+	entries, err := fs.ReadDir(schemaFS, "db/schema")
+	if err != nil {
+		panic(fmt.Sprintf("read embedded db/schema: %v", err))
 	}
-	for v := 3; v <= userVersion; v++ {
-		if _, err := db.Exec(migrations[v]); err != nil {
-			return fmt.Errorf("apply schema (v%d): %w", v, err)
+	steps := make([]ddlStep, 0, len(entries))
+	for i, e := range entries {
+		m := schemaFileRe.FindStringSubmatch(e.Name())
+		if m == nil {
+			panic(fmt.Sprintf("embedded db/schema/%s: name breaks the NNN_*.sql contract (V60)", e.Name()))
+		}
+		n, _ := strconv.Atoi(m[1]) // 3 digits, cannot fail
+		if n != i+1 {
+			panic(fmt.Sprintf("embedded db/schema: prefix gap at %s — expected %03d_*.sql (contiguous from 001, V60)", e.Name(), i+1))
+		}
+		steps = append(steps, ddlStep{version: n + 1, sql: mustDDL(e.Name())})
+	}
+	if len(steps) == 0 {
+		panic("embedded db/schema: no DDL files (V60)")
+	}
+	return steps
+}
+
+// steps is the migration chain, derived once at startup (V59). applySchema and
+// migrate both iterate it, so fresh == migrated by construction (V45).
+var steps = schemaSteps()
+
+// applySchema lays every step's DDL in order on a fresh db, then stamps the
+// current version (V9 anchor). It iterates the same `steps` slice migrate uses,
+// so a fresh db carries exactly what a fully-migrated one does (V45).
+func applySchema(db *sql.DB) error {
+	for _, s := range steps {
+		if _, err := db.Exec(s.sql); err != nil {
+			return fmt.Errorf("apply schema (v%d): %w", s.version, err)
 		}
 	}
 	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d;", userVersion)); err != nil {
@@ -81,9 +103,9 @@ func applySchema(db *sql.DB) error {
 // fresh file → full schema. uv==1 (pre-project-scope, only the one-off SQL ever
 // migrated it) and uv>userVersion (a db written by a newer binary) are
 // unsupported and error rather than risk a blind half-migration (cf V23). Any
-// other uv loops uv+1..userVersion, applying each step's DDL and stamping THAT
-// literal version — never the moving userVersion constant, which would jump the
-// version forward and skip later steps. So a v2 db chains 2→3→4.
+// other uv applies every step past uv, stamping THAT step's literal version —
+// never the moving userVersion constant, which would jump the version forward
+// and skip later steps. So a v2 db chains 2→3→…→6.
 func migrate(db *sql.DB, uv int) error {
 	if uv == 0 {
 		return applySchema(db)
@@ -94,16 +116,15 @@ func migrate(db *sql.DB, uv int) error {
 	if uv == 1 || uv > userVersion {
 		return fmt.Errorf("unsupported db user_version %d (want 0, or 2..%d)", uv, userVersion)
 	}
-	for v := uv + 1; v <= userVersion; v++ {
-		ddl, ok := migrations[v]
-		if !ok {
-			return fmt.Errorf("no migration step to v%d", v)
+	for _, s := range steps {
+		if s.version <= uv {
+			continue
 		}
-		if _, err := db.Exec(ddl); err != nil {
-			return fmt.Errorf("migrate v%d: %w", v, err)
+		if _, err := db.Exec(s.sql); err != nil {
+			return fmt.Errorf("migrate v%d: %w", s.version, err)
 		}
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d;", v)); err != nil {
-			return fmt.Errorf("migrate v%d (stamp): %w", v, err)
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d;", s.version)); err != nil {
+			return fmt.Errorf("migrate v%d (stamp): %w", s.version, err)
 		}
 	}
 	return nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"regexp"
 	"strings"
@@ -61,18 +62,26 @@ func TestNoHandwrittenDomainSQL(t *testing.T) {
 // files sqlc reads at `sqlc generate` time, so the codegen schema and the runtime
 // schema are the same source and cannot diverge (extends fresh==migrated, V45).
 func TestSchemaIsSingleSource(t *testing.T) {
-	for _, c := range []struct{ ddl, file string }{
-		{schemaDDL, "db/schema/001_base.sql"},
-		{unknownDDL, "db/schema/002_unknown.sql"},
-		{testDDL, "db/schema/003_test.sql"},
-		{gateDDL, "db/schema/004_gate.sql"},
-	} {
-		b, err := os.ReadFile(c.file)
+	entries, err := fs.ReadDir(schemaFS, "db/schema")
+	if err != nil {
+		t.Fatalf("read embedded db/schema: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no embedded schema files — the walk is vacuous")
+	}
+	for _, e := range entries {
+		file := "db/schema/" + e.Name()
+		b, err := os.ReadFile(file)
 		if err != nil {
-			t.Fatalf("read %s: %v", c.file, err)
+			t.Fatalf("read %s: %v", file, err)
 		}
-		if c.ddl != string(b) {
-			t.Errorf("%s: migrator DDL diverges from the file sqlc reads", c.file)
+		// mustDDL is the byte-exact source the migrator embeds; comparing it to
+		// the on-disk file sqlc reads proves they cannot diverge. Walking
+		// fs.ReadDir (not a hand-kept list) means every file is covered — a new
+		// migration is checked automatically, closing the drift that left
+		// 005_indexes.sql unverified (V59).
+		if mustDDL(e.Name()) != string(b) {
+			t.Errorf("%s: migrator DDL diverges from the file sqlc reads", file)
 		}
 	}
 }
