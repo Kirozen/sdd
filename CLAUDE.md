@@ -71,13 +71,18 @@ SPEC.md line (V18).
 
 ### Schema migrations
 
-`schema.go` is the migration anchor. To add a version: bump `userVersion`, add one entry to
-the `migrations` map keyed by the new version with its additive DDL constant — nothing else.
-`applySchema` (fresh db) and `migrate` (existing db) both derive from the same constants, so
-**fresh == migrated by construction** (V45) — `TestFreshEqualsMigratedSchemaV<n>` enforces
-this. `migrate` loops `uv+1..userVersion` stamping each *literal* version (never the moving
-`userVersion` constant, which would skip steps — this was review BLOCK-1). Migrations are
-additive only (ALTER/CREATE), never destructive.
+`schema.go` is the migration anchor. To add a version: **drop a `db/schema/00N_*.sql` file
+and bump `userVersion`** — nothing else. The migration chain is *derived* from the embedded
+files (`schemaSteps`, V59): `fs.ReadDir` returns them sorted, and file `00N` produces schema
+version `N+1` (`001_base` = v2). There is no `migrations` map or per-file DDL var to keep in
+lockstep. `applySchema` (fresh db) and `migrate` (existing db) iterate the same derived
+`steps` slice, so **fresh == migrated by construction** (V45) — `TestFreshEqualsMigratedSchemaV<n>`
+enforces this. `migrate` applies each step past `uv` stamping that step's *literal* version
+(never the moving `userVersion` constant, which would skip steps — this was review BLOCK-1).
+`schemaSteps` panics on a filename outside `^\d{3}_.*\.sql$` or a numbering gap (the contract
+it derives from, V60); `userVersion` must equal the last derived step's version, guarded by
+`TestUserVersionMatchesEmbeddedSteps`. Migrations are additive only (ALTER/CREATE), never
+destructive.
 
 ## Conventions
 
