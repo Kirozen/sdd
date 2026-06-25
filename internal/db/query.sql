@@ -151,6 +151,48 @@ UPDATE unknown SET status = 'resolved' WHERE unknown.ord = ? AND unknown.feature
 -- name: WipeFeature :execrows
 DELETE FROM feature WHERE project_id = ? AND ord = ?;
 
+-- ============================================================ retraction (rmtask.go, retractinv.go, retractiface.go, rmgoal.go) -- F18
+
+-- name: DeleteTaskByOrd :execrows
+-- Hard-delete an ephemeral task by its per-project ordinal (scoped via the
+-- feature join, V20); task_cites_* rows cascade (001_base). n==0 => no such task.
+DELETE FROM task WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?);
+
+-- name: DeleteInvariantByOrd :execrows
+-- Hard-delete a durable invariant, scoped (V20). A cited inv_id (task_cites_inv /
+-- bug_fix, NO ACTION) makes this raise an FK error -- the command pre-checks and
+-- refuses first (V95). test rows cascade (003_test.sql) and are announced first.
+DELETE FROM invariant WHERE project_id = ? AND ord = ?;
+
+-- name: DeleteInterfaceByName :execrows
+-- Hard-delete a durable interface, scoped (V20). A cited iface_id (task_cites_iface,
+-- NO ACTION) raises an FK error -- the command pre-checks and refuses first (V95).
+DELETE FROM interface WHERE project_id = ? AND name = ?;
+
+-- name: TestNamesByInvariantOrd :many
+-- Proving-test names for an invariant (by per-project ord), so retract-invariant
+-- can announce the tests it is about to cascade-delete (V95/V42).
+SELECT t.name FROM test t JOIN invariant i ON i.id = t.invariant_id
+WHERE i.project_id = ? AND i.ord = ? ORDER BY t.name;
+
+-- name: DeleteGoalByPosition :execrows
+-- Hard-delete the n-th goal (1-based, ORDER BY id as rendered) of a feature
+-- addressed by its ordinal, scoped to the project (V20, V98). Pass OFFSET = n-1.
+DELETE FROM goal WHERE id = (
+	SELECT g.id FROM goal g JOIN feature f ON f.id = g.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY g.id LIMIT 1 OFFSET ?
+);
+
+-- name: DeleteConstraintByPosition :execrows
+-- Hard-delete the n-th constraint (1-based, ORDER BY id) of a feature by ordinal,
+-- scoped to the project (V20, V98). Pass OFFSET = n-1.
+DELETE FROM "constraint" WHERE id = (
+	SELECT c.id FROM "constraint" c JOIN feature f ON f.id = c.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY c.id LIMIT 1 OFFSET ?
+);
+
 -- ============================================================ seed/import wipe (import.go)
 
 -- name: ProjectRowCount :one

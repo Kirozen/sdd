@@ -194,6 +194,93 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (i
 	return result.LastInsertId()
 }
 
+const deleteConstraintByPosition = `-- name: DeleteConstraintByPosition :execrows
+DELETE FROM "constraint" WHERE id = (
+	SELECT c.id FROM "constraint" c JOIN feature f ON f.id = c.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY c.id LIMIT 1 OFFSET ?
+)
+`
+
+type DeleteConstraintByPositionParams struct {
+	ProjectID int64
+	Ord       int64
+	Offset    int64
+}
+
+// Hard-delete the n-th constraint (1-based, ORDER BY id) of a feature by ordinal,
+// scoped to the project (V20, V98). Pass OFFSET = n-1.
+func (q *Queries) DeleteConstraintByPosition(ctx context.Context, arg DeleteConstraintByPositionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteConstraintByPosition, arg.ProjectID, arg.Ord, arg.Offset)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteGoalByPosition = `-- name: DeleteGoalByPosition :execrows
+DELETE FROM goal WHERE id = (
+	SELECT g.id FROM goal g JOIN feature f ON f.id = g.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY g.id LIMIT 1 OFFSET ?
+)
+`
+
+type DeleteGoalByPositionParams struct {
+	ProjectID int64
+	Ord       int64
+	Offset    int64
+}
+
+// Hard-delete the n-th goal (1-based, ORDER BY id as rendered) of a feature
+// addressed by its ordinal, scoped to the project (V20, V98). Pass OFFSET = n-1.
+func (q *Queries) DeleteGoalByPosition(ctx context.Context, arg DeleteGoalByPositionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteGoalByPosition, arg.ProjectID, arg.Ord, arg.Offset)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteInterfaceByName = `-- name: DeleteInterfaceByName :execrows
+DELETE FROM interface WHERE project_id = ? AND name = ?
+`
+
+type DeleteInterfaceByNameParams struct {
+	ProjectID int64
+	Name      string
+}
+
+// Hard-delete a durable interface, scoped (V20). A cited iface_id (task_cites_iface,
+// NO ACTION) raises an FK error -- the command pre-checks and refuses first (V95).
+func (q *Queries) DeleteInterfaceByName(ctx context.Context, arg DeleteInterfaceByNameParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteInterfaceByName, arg.ProjectID, arg.Name)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteInvariantByOrd = `-- name: DeleteInvariantByOrd :execrows
+DELETE FROM invariant WHERE project_id = ? AND ord = ?
+`
+
+type DeleteInvariantByOrdParams struct {
+	ProjectID int64
+	Ord       int64
+}
+
+// Hard-delete a durable invariant, scoped (V20). A cited inv_id (task_cites_inv /
+// bug_fix, NO ACTION) makes this raise an FK error -- the command pre-checks and
+// refuses first (V95). test rows cascade (003_test.sql) and are announced first.
+func (q *Queries) DeleteInvariantByOrd(ctx context.Context, arg DeleteInvariantByOrdParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteInvariantByOrd, arg.ProjectID, arg.Ord)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteProjectBugs = `-- name: DeleteProjectBugs :exec
 DELETE FROM bug WHERE project_id = ?
 `
@@ -237,6 +324,27 @@ DELETE FROM research WHERE project_id = ?
 func (q *Queries) DeleteProjectResearch(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, deleteProjectResearch, projectID)
 	return err
+}
+
+const deleteTaskByOrd = `-- name: DeleteTaskByOrd :execrows
+
+DELETE FROM task WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
+`
+
+type DeleteTaskByOrdParams struct {
+	Ord       int64
+	ProjectID int64
+}
+
+// ============================================================ retraction (rmtask.go, retractinv.go, retractiface.go, rmgoal.go) -- F18
+// Hard-delete an ephemeral task by its per-project ordinal (scoped via the
+// feature join, V20); task_cites_* rows cascade (001_base). n==0 => no such task.
+func (q *Queries) DeleteTaskByOrd(ctx context.Context, arg DeleteTaskByOrdParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTaskByOrd, arg.Ord, arg.ProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deprecateInterface = `-- name: DeprecateInterface :execrows
@@ -1830,6 +1938,41 @@ func (q *Queries) TasksInProjectByStatus(ctx context.Context, arg TasksInProject
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const testNamesByInvariantOrd = `-- name: TestNamesByInvariantOrd :many
+SELECT t.name FROM test t JOIN invariant i ON i.id = t.invariant_id
+WHERE i.project_id = ? AND i.ord = ? ORDER BY t.name
+`
+
+type TestNamesByInvariantOrdParams struct {
+	ProjectID int64
+	Ord       int64
+}
+
+// Proving-test names for an invariant (by per-project ord), so retract-invariant
+// can announce the tests it is about to cascade-delete (V95/V42).
+func (q *Queries) TestNamesByInvariantOrd(ctx context.Context, arg TestNamesByInvariantOrdParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, testNamesByInvariantOrd, arg.ProjectID, arg.Ord)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

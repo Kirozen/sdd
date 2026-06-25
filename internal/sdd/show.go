@@ -21,6 +21,18 @@ func refID(ref string) (int, error) {
 	return n, nil
 }
 
+// ordArg parses an ordinal argument tolerantly: it accepts both the bare number
+// ("98") and the prefixed form ("T98") so the retraction commands take the same
+// V<n>/T<n> tokens the user reads in SPEC.md.
+func ordArg(s, prefix string) (int, error) {
+	s = strings.TrimPrefix(s, prefix)
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("bad %s ordinal %q", prefix, s)
+	}
+	return n, nil
+}
+
 // showRef returns the single caveman line for a ref within the current project
 // (V<ord>/I.<name>/T<ord>/B<ord>/R<ord>), formatted through the same fmt*Line
 // helpers as renderSpec (V18). Read-pure (V16); scoped by project (V20).
