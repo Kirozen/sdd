@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -24,22 +26,24 @@ func refID(ref string) (int, error) {
 // helpers as renderSpec (V18). Read-pure (V16); scoped by project (V20).
 // Unknown ref/kind → error (V17).
 func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
+	ctx := context.Background()
+	q := dbq.New(db)
 	switch {
 	case strings.HasPrefix(ref, "I."):
 		name := ref[2:]
-		var kind, sig, status string
-		if err := db.QueryRow(`SELECT kind, sig, status FROM interface WHERE project_id=? AND name=?`, projectID, name).Scan(&kind, &sig, &status); err != nil {
+		r, err := q.ShowInterface(ctx, dbq.ShowInterfaceParams{ProjectID: nz(projectID), Name: name})
+		if err != nil {
 			return "", fmt.Errorf("no interface %q in this project", ref)
 		}
-		return fmtInterfaceLine(kind, name, sig, status), nil
+		return fmtInterfaceLine(r.Kind, name, r.Sig, r.Status), nil
 
 	case strings.HasPrefix(ref, "V"):
 		ord, err := refID(ref)
 		if err != nil {
 			return "", err
 		}
-		var text string
-		if err := db.QueryRow(`SELECT text FROM invariant WHERE project_id=? AND ord=?`, projectID, ord).Scan(&text); err != nil {
+		text, err := q.ShowInvariant(ctx, dbq.ShowInvariantParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return "", fmt.Errorf("no invariant %q in this project", ref)
 		}
 		return fmtInvariantLine(ord, text), nil
@@ -49,43 +53,41 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		var pk int64
-		var status, text string
-		if err := db.QueryRow(`SELECT t.id, t.status, t.text FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=? AND t.ord=?`, projectID, ord).Scan(&pk, &status, &text); err != nil {
+		r, err := q.ShowTask(ctx, dbq.ShowTaskParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return "", fmt.Errorf("no task %q in this project", ref)
 		}
-		cites, err := taskCites(db, pk)
+		cites, err := taskCites(db, r.ID)
 		if err != nil {
 			return "", err
 		}
-		return fmtTaskLine(ord, status, text, cites), nil
+		return fmtTaskLine(ord, r.Status, r.Text, cites), nil
 
 	case strings.HasPrefix(ref, "B"):
 		ord, err := refID(ref)
 		if err != nil {
 			return "", err
 		}
-		var pk int64
-		var date, cause string
-		if err := db.QueryRow(`SELECT id, date, cause FROM bug WHERE project_id=? AND ord=?`, projectID, ord).Scan(&pk, &date, &cause); err != nil {
+		r, err := q.ShowBug(ctx, dbq.ShowBugParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return "", fmt.Errorf("no bug %q in this project", ref)
 		}
-		fix, err := bugFix(db, pk)
+		fix, err := bugFix(db, r.ID)
 		if err != nil {
 			return "", err
 		}
-		return fmtBugLine(ord, date, cause, fix), nil
+		return fmtBugLine(ord, r.Date, r.Cause, fix), nil
 
 	case strings.HasPrefix(ref, "R"):
 		ord, err := refID(ref)
 		if err != nil {
 			return "", err
 		}
-		var topic, finding, src string
-		if err := db.QueryRow(`SELECT topic, finding, src FROM research WHERE project_id=? AND ord=?`, projectID, ord).Scan(&topic, &finding, &src); err != nil {
+		r, err := q.ShowResearch(ctx, dbq.ShowResearchParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return "", fmt.Errorf("no research %q in this project", ref)
 		}
-		return fmtResearchLine(ord, topic, finding, src), nil
+		return fmtResearchLine(ord, r.Topic, r.Finding, r.Src), nil
 
 	default:
 		return "", fmt.Errorf("unrecognized ref %q (want V<n>/I.<name>/T<n>/B<n>/R<n>)", ref)

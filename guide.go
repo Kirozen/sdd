@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -31,26 +33,8 @@ func skillForStage(stage string) string {
 // per feature pointing at the next move. An empty project points at the grill.
 // Read-pure (V16); scoped to the project (V20).
 func guideReport(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT ord, name, id FROM feature WHERE project_id=? ORDER BY ord`, projectID)
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
 	if err != nil {
-		return nil, err
-	}
-	type feat struct {
-		ord  int
-		name string
-		pk   int64
-	}
-	var feats []feat
-	for rows.Next() {
-		var f feat
-		if err := rows.Scan(&f.ord, &f.name, &f.pk); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		feats = append(feats, f)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -59,7 +43,7 @@ func guideReport(db *sql.DB, projectID int64) ([]string, error) {
 	}
 	var out []string
 	for _, f := range feats {
-		stage, err := featureStage(db, f.pk)
+		stage, err := featureStage(db, f.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -67,7 +51,7 @@ func guideReport(db *sql.DB, projectID int64) ([]string, error) {
 		// A specced feature's next move depends on its review verdict (V47): no
 		// gate → review then build; go → build; no-go → re-spec then re-review.
 		if stage == "specced" {
-			verdict, has, err := featureGate(db, f.pk)
+			verdict, has, err := featureGate(db, f.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -80,7 +64,7 @@ func guideReport(db *sql.DB, projectID int64) ([]string, error) {
 				next = "blocked: re-spec then re-review (no-go)"
 			}
 		}
-		out = append(out, fmt.Sprintf("F%d %s  [%s] → %s", f.ord, f.name, stage, next))
+		out = append(out, fmt.Sprintf("F%d %s  [%s] → %s", int(f.Ord.Int64), f.Name, stage, next))
 	}
 	return out, nil
 }

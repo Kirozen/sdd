@@ -864,6 +864,46 @@ func (q *Queries) InterfacesByProject(ctx context.Context, projectID sql.NullInt
 	return items, nil
 }
 
+const invariantCoverage = `-- name: InvariantCoverage :many
+
+SELECT i.ord, i.text, CAST(COALESCE(GROUP_CONCAT(t.name, ', '), '') AS TEXT) AS tests
+FROM invariant i LEFT JOIN test t ON t.invariant_id = i.id
+WHERE i.project_id = ?
+GROUP BY i.id ORDER BY i.ord
+`
+
+type InvariantCoverageRow struct {
+	Ord   sql.NullInt64
+	Text  string
+	Tests string
+}
+
+// ============================================================ reads: cover (cover.go)
+// Each project invariant with its proving test names joined (empty when none).
+// CAST keeps GROUP_CONCAT a plain string for sqlc.
+func (q *Queries) InvariantCoverage(ctx context.Context, projectID sql.NullInt64) ([]InvariantCoverageRow, error) {
+	rows, err := q.db.QueryContext(ctx, invariantCoverage, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InvariantCoverageRow{}
+	for rows.Next() {
+		var i InvariantCoverageRow
+		if err := rows.Scan(&i.Ord, &i.Text, &i.Tests); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const invariantIDByOrd = `-- name: InvariantIDByOrd :one
 SELECT id FROM invariant WHERE project_id = ? AND ord = ?
 `

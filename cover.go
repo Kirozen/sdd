@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -12,34 +14,20 @@ import (
 // auditable: uncovered invariants are exactly the ones no test guards. Read-pure
 // (V16, no mutation/re-export); scoped to the project (V20).
 func coverReport(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`
-		SELECT i.ord, i.text, COALESCE(GROUP_CONCAT(t.name, ', '), '')
-		FROM invariant i LEFT JOIN test t ON t.invariant_id = i.id
-		WHERE i.project_id = ?
-		GROUP BY i.id ORDER BY i.ord`, projectID)
+	rows, err := dbq.New(db).InvariantCoverage(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
 	var out []string
 	var covered, total int
-	for rows.Next() {
-		var ord int
-		var text, names string
-		if err := rows.Scan(&ord, &text, &names); err != nil {
-			return nil, err
-		}
+	for _, r := range rows {
 		total++
-		if names == "" {
-			out = append(out, fmt.Sprintf("! V%d aucun test — %s", ord, snippet(text)))
+		if r.Tests == "" {
+			out = append(out, fmt.Sprintf("! V%d aucun test — %s", int(r.Ord.Int64), snippet(r.Text)))
 		} else {
 			covered++
-			out = append(out, fmt.Sprintf("V%d ✓ %s", ord, names))
+			out = append(out, fmt.Sprintf("V%d ✓ %s", int(r.Ord.Int64), r.Tests))
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	out = append(out, fmt.Sprintf("gardés: %d/%d invariants", covered, total))
 	return out, nil

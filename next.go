@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -50,19 +52,8 @@ type nextResult struct {
 // the project (V20): every query filters by project_id. Returns nil when no
 // actionable task exists.
 func nextActionable(db *sql.DB, projectID int64) (*nextResult, error) {
-	var (
-		featOrd, taskOrd       int
-		featName, status, text string
-		featPK, taskPK         int64
-	)
 	// Lowest-ord feature with a non-`x` task; within it `~` before `.`, then ord.
-	err := db.QueryRow(`SELECT f.ord, f.name, f.id, t.ord, t.status, t.text, t.id
-		FROM task t JOIN feature f ON f.id = t.feature_id
-		WHERE f.project_id = ? AND t.status != 'x'
-		ORDER BY f.ord ASC,
-			CASE t.status WHEN '~' THEN 0 ELSE 1 END ASC,
-			t.ord ASC
-		LIMIT 1`, projectID).Scan(&featOrd, &featName, &featPK, &taskOrd, &status, &text, &taskPK)
+	r, err := dbq.New(db).NextActionableTask(context.Background(), nz(projectID))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -70,12 +61,12 @@ func nextActionable(db *sql.DB, projectID int64) (*nextResult, error) {
 		return nil, err
 	}
 
-	goals, err := featureGoals(db, featPK)
+	goals, err := featureGoals(db, r.FeatID)
 	if err != nil {
 		return nil, err
 	}
 
-	cites, err := taskCites(db, taskPK)
+	cites, err := taskCites(db, r.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +76,10 @@ func nextActionable(db *sql.DB, projectID int64) (*nextResult, error) {
 	}
 
 	return &nextResult{
-		featOrd:   featOrd,
-		featName:  featName,
+		featOrd:   int(r.FeatOrd.Int64),
+		featName:  r.FeatName,
 		goals:     goals,
-		taskLine:  fmtTaskLine(taskOrd, status, text, cites),
+		taskLine:  fmtTaskLine(int(r.TaskOrd.Int64), r.Status, r.Text, cites),
 		citeLines: citeLines,
 	}, nil
 }
@@ -125,26 +116,8 @@ func renderNext(r *nextResult) []string {
 // spec (seeded/grilled) is pointed at; otherwise, with features present and all
 // built, the project is up to date; with no feature at all, point at the grill.
 func emptyHint(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT ord, name, id FROM feature WHERE project_id=? ORDER BY ord`, projectID)
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
 	if err != nil {
-		return nil, err
-	}
-	type feat struct {
-		ord  int
-		name string
-		pk   int64
-	}
-	var feats []feat
-	for rows.Next() {
-		var f feat
-		if err := rows.Scan(&f.ord, &f.name, &f.pk); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		feats = append(feats, f)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -153,12 +126,12 @@ func emptyHint(db *sql.DB, projectID int64) ([]string, error) {
 	}
 	var awaiting []string
 	for _, f := range feats {
-		stage, err := featureStage(db, f.pk)
+		stage, err := featureStage(db, f.ID)
 		if err != nil {
 			return nil, err
 		}
 		if stageBeforeSpec(stage) {
-			awaiting = append(awaiting, fmt.Sprintf("F%d %s awaits spec (%s) — run sdd-spec", f.ord, f.name, stage))
+			awaiting = append(awaiting, fmt.Sprintf("F%d %s awaits spec (%s) — run sdd-spec", int(f.Ord.Int64), f.Name, stage))
 		}
 	}
 	if len(awaiting) > 0 {
@@ -177,20 +150,7 @@ func stageBeforeSpec(stage string) bool {
 // ORDER BY id like renderSpec). A feature with no goals yields an empty slice,
 // never an error.
 func featureGoals(db *sql.DB, featurePK int64) ([]string, error) {
-	rows, err := db.Query(`SELECT text FROM goal WHERE feature_id=? ORDER BY id`, featurePK)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var goals []string
-	for rows.Next() {
-		var g string
-		if err := rows.Scan(&g); err != nil {
-			return nil, err
-		}
-		goals = append(goals, g)
-	}
-	return goals, rows.Err()
+	return dbq.New(db).GoalsByFeature(context.Background(), featurePK)
 }
 
 // resolveCites maps a task's raw cite string (e.g. "V30,I.next" or the "-"

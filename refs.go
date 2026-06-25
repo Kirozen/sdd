@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -15,29 +17,43 @@ import (
 // SPEC.md (V18). Read-pure (V16), scoped (V20). Non-target/unknown ref → error
 // (V17); an uncited target → no lines.
 func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
+	ctx := context.Background()
+	q := dbq.New(db)
 	switch {
 	case strings.HasPrefix(ref, "I."):
 		name := ref[2:]
-		var iid int64
-		if err := db.QueryRow(`SELECT id FROM interface WHERE project_id=? AND name=?`, projectID, name).Scan(&iid); err != nil {
+		iid, err := q.InterfaceIDByName(ctx, dbq.InterfaceIDByNameParams{ProjectID: nz(projectID), Name: name})
+		if err != nil {
 			return nil, fmt.Errorf("no interface %q in this project", ref)
 		}
-		return citerLines(db, projectID, `SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id=j.task_id WHERE j.iface_id=? ORDER BY t.ord`, iid, "T")
+		ords, err := q.CitersOfIface(ctx, iid)
+		if err != nil {
+			return nil, err
+		}
+		return citerLines(db, projectID, ords, "T")
 
 	case strings.HasPrefix(ref, "V"):
 		ord, err := refID(ref)
 		if err != nil {
 			return nil, err
 		}
-		var iid int64
-		if err := db.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, projectID, ord).Scan(&iid); err != nil {
+		iid, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: nz(projectID), Ord: nz(int64(ord))})
+		if err != nil {
 			return nil, fmt.Errorf("no invariant %q in this project", ref)
 		}
-		tasks, err := citerLines(db, projectID, `SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id=j.task_id WHERE j.inv_id=? ORDER BY t.ord`, iid, "T")
+		taskOrds, err := q.TaskCitersOfInv(ctx, iid)
 		if err != nil {
 			return nil, err
 		}
-		bugs, err := citerLines(db, projectID, `SELECT b.ord FROM bug_fix j JOIN bug b ON b.id=j.bug_id WHERE j.inv_id=? ORDER BY b.ord`, iid, "B")
+		tasks, err := citerLines(db, projectID, taskOrds, "T")
+		if err != nil {
+			return nil, err
+		}
+		bugOrds, err := q.BugCitersOfInv(ctx, iid)
+		if err != nil {
+			return nil, err
+		}
+		bugs, err := citerLines(db, projectID, bugOrds, "B")
 		if err != nil {
 			return nil, err
 		}
@@ -48,29 +64,13 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 	}
 }
 
-// citerLines runs an ordinal query then renders each "<prefix><ord>" ref through
-// showRef (reusing V18 formatting, scoped to projectID).
-func citerLines(db *sql.DB, projectID int64, query string, arg int64, prefix string) ([]string, error) {
-	rows, err := db.Query(query, arg)
-	if err != nil {
-		return nil, err
-	}
-	var ords []int
-	for rows.Next() {
-		var ord int
-		if err := rows.Scan(&ord); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ords = append(ords, ord)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+// citerLines renders each citer ordinal as a "<prefix><ord>" ref through showRef
+// (reusing V18 formatting, scoped to projectID). ords come from the generated
+// citer queries (nullable column → sql.NullInt64, always set in practice).
+func citerLines(db *sql.DB, projectID int64, ords []sql.NullInt64, prefix string) ([]string, error) {
 	var out []string
-	for _, ord := range ords {
-		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, ord))
+	for _, o := range ords {
+		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, o.Int64))
 		if err != nil {
 			return nil, err
 		}

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -12,102 +14,49 @@ import (
 // interface (V19). Read-pure (V16), scoped (V20); it does not touch check's
 // drift contract (V6).
 func statusReport(db *sql.DB, projectID int64) ([]string, error) {
-	type feat struct {
-		pk   int64
-		ord  int
-		name string
-	}
-	var feats []feat
-	rows, err := db.Query(`SELECT id, ord, name FROM feature WHERE project_id=? ORDER BY ord`, projectID)
+	ctx := context.Background()
+	q := dbq.New(db)
+	feats, err := q.FeaturesByProject(ctx, nz(projectID))
 	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var f feat
-		if err := rows.Scan(&f.pk, &f.ord, &f.name); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		feats = append(feats, f)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
 	var out []string
 	for _, f := range feats {
-		c := map[string]int{}
-		cr, err := db.Query(`SELECT status, count(*) FROM task WHERE feature_id=? GROUP BY status`, f.pk)
+		counts, err := q.TaskStatusCounts(ctx, f.ID)
 		if err != nil {
 			return nil, err
 		}
-		for cr.Next() {
-			var s string
-			var n int
-			if err := cr.Scan(&s, &n); err != nil {
-				cr.Close()
-				return nil, err
-			}
-			c[s] = n
+		c := map[string]int64{}
+		for _, r := range counts {
+			c[r.Status] = r.N
 		}
-		cr.Close()
-		if err := cr.Err(); err != nil {
-			return nil, err
-		}
-		stage, err := featureStage(db, f.pk)
+		stage, err := featureStage(db, f.ID)
 		if err != nil {
 			return nil, err
 		}
 		// V34: stage appended AFTER the counts; counts substring + V19 lines unchanged.
-		out = append(out, fmt.Sprintf("F%d %s  x:%d ~:%d .:%d [%s]", f.ord, f.name, c["x"], c["~"], c["."], stage))
+		out = append(out, fmt.Sprintf("F%d %s  x:%d ~:%d .:%d [%s]", int(f.Ord.Int64), f.Name, c["x"], c["~"], c["."], stage))
 	}
 
 	// V19: flag every task in this project citing a deprecated interface.
-	wr, err := db.Query(`SELECT t.ord, i.name
-		FROM task_cites_iface j
-		JOIN interface i ON i.id = j.iface_id
-		JOIN task t ON t.id = j.task_id
-		JOIN feature f ON f.id = t.feature_id
-		WHERE f.project_id = ? AND i.status = 'deprecated'
-		ORDER BY t.ord, i.name`, projectID)
+	warnings, err := q.DeprecatedCiteWarnings(ctx, nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	for wr.Next() {
-		var ord int
-		var name string
-		if err := wr.Scan(&ord, &name); err != nil {
-			wr.Close()
-			return nil, err
-		}
-		out = append(out, fmt.Sprintf("! T%d cites deprecated I.%s", ord, name))
-	}
-	wr.Close()
-	if err := wr.Err(); err != nil {
-		return nil, err
+	for _, w := range warnings {
+		out = append(out, fmt.Sprintf("! T%d cites deprecated I.%s", int(w.Ord.Int64), w.Name))
 	}
 
 	// V37: flag every feature carrying at least one open unknown (non-blocking).
-	ur, err := db.Query(`SELECT f.ord, f.name, count(*)
-		FROM unknown u
-		JOIN feature f ON f.id = u.feature_id
-		WHERE f.project_id = ? AND u.status = 'open'
-		GROUP BY f.id
-		ORDER BY f.ord`, projectID)
+	openUnknowns, err := q.OpenUnknownFeatures(ctx, nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	defer ur.Close()
-	for ur.Next() {
-		var ord, n int
-		var name string
-		if err := ur.Scan(&ord, &name, &n); err != nil {
-			return nil, err
-		}
-		out = append(out, fmt.Sprintf("! F%d %s: %d unknowns ouverts", ord, name, n))
+	for _, u := range openUnknowns {
+		out = append(out, fmt.Sprintf("! F%d %s: %d unknowns ouverts", int(u.Ord.Int64), u.Name, u.N))
 	}
-	return out, ur.Err()
+	return out, nil
 }
 
 // featureStage infers a feature's pipeline stage from its data (V32, first
@@ -115,27 +64,26 @@ func statusReport(db *sql.DB, projectID int64) ([]string, error) {
 // neither) ▸ grilled(goal|constraint ∧ no task) ▸ seeded(none). "reviewed" is
 // not inferable (no DB trace) → never returned (parked ?). Read-pure.
 func featureStage(db *sql.DB, featurePK int64) (string, error) {
-	var total, done, todo int
-	if err := db.QueryRow(`SELECT count(*),
-		count(*) FILTER (WHERE status='x'),
-		count(*) FILTER (WHERE status='.')
-		FROM task WHERE feature_id=?`, featurePK).Scan(&total, &done, &todo); err != nil {
+	ctx := context.Background()
+	q := dbq.New(db)
+	counts, err := q.FeatureStageCounts(ctx, featurePK)
+	if err != nil {
 		return "", err
 	}
-	if total > 0 {
+	if counts.Total > 0 {
 		switch {
-		case done == total:
+		case counts.Done == counts.Total:
 			return "built", nil
-		case todo == total:
+		case counts.Todo == counts.Total:
 			return "specced", nil
 		default:
 			return "building", nil
 		}
 	}
-	var has int
-	if err := db.QueryRow(`SELECT
-		(SELECT count(*) FROM goal WHERE feature_id=?)
-		+ (SELECT count(*) FROM "constraint" WHERE feature_id=?)`, featurePK, featurePK).Scan(&has); err != nil {
+	has, err := q.FeatureGoalConstraintCount(ctx, dbq.FeatureGoalConstraintCountParams{
+		FeatureID: featurePK, FeatureID_2: featurePK,
+	})
+	if err != nil {
 		return "", err
 	}
 	if has > 0 {

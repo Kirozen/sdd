@@ -321,3 +321,13 @@ LIMIT 1;
 
 -- name: GateVerdict :one
 SELECT verdict FROM gate WHERE feature_id = ?;
+
+-- ============================================================ reads: cover (cover.go)
+
+-- name: InvariantCoverage :many
+-- Each project invariant with its proving test names joined (empty when none).
+-- CAST keeps GROUP_CONCAT a plain string for sqlc.
+SELECT i.ord, i.text, CAST(COALESCE(GROUP_CONCAT(t.name, ', '), '') AS TEXT) AS tests
+FROM invariant i LEFT JOIN test t ON t.invariant_id = i.id
+WHERE i.project_id = ?
+GROUP BY i.id ORDER BY i.ord;
