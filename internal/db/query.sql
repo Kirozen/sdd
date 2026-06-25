@@ -193,6 +193,17 @@ DELETE FROM "constraint" WHERE id = (
 	ORDER BY c.id LIMIT 1 OFFSET ?
 );
 
+-- ============================================================ projects (projects.go) -- F17
+
+-- name: ProjectsWithCounts :many
+-- The ONE intentionally NON project-scoped read (V92): enumerates every project
+-- in the store with its counts. open_tasks excludes done (status != 'x').
+SELECT p.id, p.url, p.path,
+	CAST((SELECT count(*) FROM feature f WHERE f.project_id = p.id) AS INTEGER) AS features,
+	CAST((SELECT count(*) FROM invariant i WHERE i.project_id = p.id) AS INTEGER) AS invariants,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = p.id AND t.status != 'x') AS INTEGER) AS open_tasks
+FROM project p ORDER BY p.id;
+
 -- ============================================================ seed/import wipe (import.go)
 
 -- name: ProjectRowCount :one

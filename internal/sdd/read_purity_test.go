@@ -53,6 +53,8 @@ func TestReadCommandsArePure(t *testing.T) {
 	run("todo", "--pretty")
 	run("cat")
 	run("cat", "--feature", "1")
+	run("projects")
+	run("search", "auth")
 
 	after, err := os.ReadFile(spec)
 	if err != nil {

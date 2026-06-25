@@ -1400,6 +1400,57 @@ func (q *Queries) ProjectRowCount(ctx context.Context, arg ProjectRowCountParams
 	return n, err
 }
 
+const projectsWithCounts = `-- name: ProjectsWithCounts :many
+
+SELECT p.id, p.url, p.path,
+	CAST((SELECT count(*) FROM feature f WHERE f.project_id = p.id) AS INTEGER) AS features,
+	CAST((SELECT count(*) FROM invariant i WHERE i.project_id = p.id) AS INTEGER) AS invariants,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = p.id AND t.status != 'x') AS INTEGER) AS open_tasks
+FROM project p ORDER BY p.id
+`
+
+type ProjectsWithCountsRow struct {
+	ID         int64
+	Url        sql.NullString
+	Path       string
+	Features   int64
+	Invariants int64
+	OpenTasks  int64
+}
+
+// ============================================================ projects (projects.go) -- F17
+// The ONE intentionally NON project-scoped read (V92): enumerates every project
+// in the store with its counts. open_tasks excludes done (status != 'x').
+func (q *Queries) ProjectsWithCounts(ctx context.Context) ([]ProjectsWithCountsRow, error) {
+	rows, err := q.db.QueryContext(ctx, projectsWithCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ProjectsWithCountsRow{}
+	for rows.Next() {
+		var i ProjectsWithCountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Url,
+			&i.Path,
+			&i.Features,
+			&i.Invariants,
+			&i.OpenTasks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const researchByProject = `-- name: ResearchByProject :many
 SELECT ord, topic, finding, src FROM research WHERE project_id = ? ORDER BY ord
 `

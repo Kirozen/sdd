@@ -56,5 +56,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newRetractInterfaceCmd())
 	root.AddCommand(newRmGoalCmd())
 	root.AddCommand(newRmConstraintCmd())
+	root.AddCommand(newProjectsCmd())
+	root.AddCommand(newSearchCmd())
 	return root
 }
