@@ -42,6 +42,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newGuideCmd())
 	root.AddCommand(newAddTestCmd())
 	root.AddCommand(newCoverCmd())
+	root.AddCommand(newGateCmd())
 	return root
 }
 

@@ -8,8 +8,9 @@ import (
 // userVersion anchors schema migrations (V9). Bumped per migration script.
 // v2 adds the global project scope (project table + project_id) and per-project
 // display ordinals (ord). v3 adds the unknown table (parked grill questions).
-// v4 adds the test table (invariant ↔ proving test, V42).
-const userVersion = 4
+// v4 adds the test table (invariant ↔ proving test, V42). v5 adds the gate
+// table (durable per-feature review verdict, V46).
+const userVersion = 5
 
 // schemaDDL is the full v2 schema: a global project layer (each row scoped to a
 // project), a durable layer that persists across features, an ephemeral feature
@@ -129,6 +130,20 @@ CREATE TABLE test (
 );
 `
 
+// gateDDL is the v5 addition (V46): a durable review verdict per feature.
+// feature_id UNIQUE gives the one-per-feature UPSERT a conflict target; the row
+// cascades with its feature (V4). Kept as its own constant so fresh and migrated
+// schemas match by construction (V45/V49).
+const gateDDL = `
+CREATE TABLE gate (
+	id          INTEGER PRIMARY KEY,
+	feature_id  INTEGER NOT NULL UNIQUE REFERENCES feature(id) ON DELETE CASCADE,
+	verdict     TEXT NOT NULL CHECK (verdict IN ('go','no-go')),
+	note        TEXT,
+	recorded_at TEXT NOT NULL
+);
+`
+
 // migrations maps each schema version > 2 to its additive DDL step. The same
 // constants feed both applySchema (fresh) and migrate (upgrade), so a fresh db
 // is byte-identical to a migrated one by construction (V45). To add a version,
@@ -136,6 +151,7 @@ CREATE TABLE test (
 var migrations = map[int]string{
 	3: unknownDDL,
 	4: testDDL,
+	5: gateDDL,
 }
 
 // applySchema creates all tables and stamps user_version (V9 migration anchor).

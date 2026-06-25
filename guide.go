@@ -63,7 +63,24 @@ func guideReport(db *sql.DB, projectID int64) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fmt.Sprintf("F%d %s  [%s] → %s", f.ord, f.name, stage, skillForStage(stage)))
+		next := skillForStage(stage)
+		// A specced feature's next move depends on its review verdict (V47): no
+		// gate → review then build; go → build; no-go → re-spec then re-review.
+		if stage == "specced" {
+			verdict, has, err := featureGate(db, f.pk)
+			if err != nil {
+				return nil, err
+			}
+			switch {
+			case !has:
+				next = "sdd-review then sdd-build"
+			case verdict == "go":
+				next = "sdd-build (reviewed:go)"
+			default:
+				next = "blocked: re-spec then re-review (no-go)"
+			}
+		}
+		out = append(out, fmt.Sprintf("F%d %s  [%s] → %s", f.ord, f.name, stage, next))
 	}
 	return out, nil
 }
