@@ -15,20 +15,23 @@ import (
 
 // --- parsed model ---
 
-type parsedIface struct{ kind, name, sig string }
-type parsedInv struct {
-	id   int64
-	text string
-}
+type (
+	parsedIface struct{ kind, name, sig string }
+	parsedInv   struct {
+		id   int64
+		text string
+	}
+)
+
 type parsedResearch struct {
-	id                   int64
-	topic, finding, src  string
+	id                  int64
+	topic, finding, src string
 }
 type parsedBug struct {
-	id        int64
-	date      string
-	cause     string
-	fix       []string
+	id    int64
+	date  string
+	cause string
+	fix   []string
 }
 type parsedTask struct {
 	id     int64

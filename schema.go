@@ -41,8 +41,8 @@ func mustDDL(name string) string {
 // ddlStep is one migration step: an embedded db/schema file's DDL paired with
 // the schema version it produces (V59).
 type ddlStep struct {
-	version int
 	sql     string
+	version int
 }
 
 // schemaFileRe is the filename contract schemaSteps derives versions from: a

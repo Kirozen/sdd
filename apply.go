@@ -15,8 +15,8 @@ import (
 // begin/commit/re-export — the batch owns those (V62, V66).
 type batchCtx struct {
 	tx      *sql.Tx
-	pid     int64
 	lastMsg string
+	pid     int64
 }
 
 // currentBatch is non-nil only for the duration of an `sdd apply` run. The CLI

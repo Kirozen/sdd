@@ -39,11 +39,11 @@ func newNextCmd() *cobra.Command {
 // cite resolved to its full V/I line. Nil when the project has no actionable
 // (non-`x`) task — the caller decides the empty-case hint (V31).
 type nextResult struct {
-	featOrd   int
 	featName  string
-	goals     []string
 	taskLine  string
+	goals     []string
 	citeLines []string
+	featOrd   int
 }
 
 // nextActionable selects the next task to work on (V30): the first feature by

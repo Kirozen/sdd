@@ -36,11 +36,11 @@ func featureBlock(spec string, ord int) string {
 func TestCatDefaultScopesToUnfinished(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
-	f1, _ := addFeature(db, pid, "built")   // ord 1
-	f2, _ := addFeature(db, pid, "open")    // ord 2
-	addFeature(db, pid, "grilled")          // ord 3, zero tasks
-	addTask(db, pid, f1, "done", nil)       // T1
-	addTask(db, pid, f2, "todo", nil)       // T2
+	f1, _ := addFeature(db, pid, "built") // ord 1
+	f2, _ := addFeature(db, pid, "open")  // ord 2
+	addFeature(db, pid, "grilled")        // ord 3, zero tasks
+	addTask(db, pid, f1, "done", nil)     // T1
+	addTask(db, pid, f2, "todo", nil)     // T2
 	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
 		t.Fatal(err)
 	}

@@ -24,7 +24,7 @@ func TestAddCitesAttaches(t *testing.T) {
 	pid := mustProject(t, db)
 	fid, _ := addFeature(db, pid, "f")
 	tpk, _ := addTask(db, pid, fid, "t", nil)
-	addInvariant(db, pid, "inv")            // V1
+	addInvariant(db, pid, "inv")             // V1
 	addInterface(db, pid, "cmd", "x", "sig") // I.x
 
 	if err := addCites(db, pid, ordOf(t, db, tpk), []string{"V1", "I.x"}); err != nil {

@@ -56,9 +56,9 @@ func fmtUnknownLine(ord int, status, text string) string {
 // name + PK for child lookups). sqlc emits a distinct row type per query even
 // when columns match, so every selector maps into this one struct.
 type featureRow struct {
+	Name string
 	ID   int64
 	Ord  int64
-	Name string
 }
 
 // featureSel picks which features a render emits; durables are never scoped
