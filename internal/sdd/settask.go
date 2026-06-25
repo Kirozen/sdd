@@ -3,7 +3,6 @@ package sdd
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	dbq "github.com/kirozen/sdd/internal/db"
 	"github.com/spf13/cobra"
@@ -32,12 +31,12 @@ func newSetTaskCmd() *cobra.Command {
 		Short: "set a task status (. todo / ~ wip / x done)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := strconv.ParseInt(args[0], 10, 64)
+			ord, err := ordArg(args[0], "T")
 			if err != nil {
-				return fmt.Errorf("bad task id %q", args[0])
+				return err
 			}
 			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
-				return fmt.Sprintf("T%d → %s", id, status), setTaskStatus(db, pid, id, status)
+				return fmt.Sprintf("T%d → %s", int64(ord), status), setTaskStatus(db, pid, int64(ord), status)
 			})
 		},
 	}

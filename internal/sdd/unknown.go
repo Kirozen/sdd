@@ -3,7 +3,6 @@ package sdd
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	dbq "github.com/kirozen/sdd/internal/db"
 	"github.com/spf13/cobra"
@@ -74,12 +73,12 @@ func newResolveUnknownCmd() *cobra.Command {
 		Short: "mark an unknown resolved (kept, never deleted)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ord, err := strconv.ParseInt(args[0], 10, 64)
+			ord, err := ordArg(args[0], "U")
 			if err != nil {
-				return fmt.Errorf("bad unknown ordinal %q", args[0])
+				return err
 			}
 			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
-				return fmt.Sprintf("U%d → resolved", ord), resolveUnknown(db, pid, ord)
+				return fmt.Sprintf("U%d → resolved", int64(ord)), resolveUnknown(db, pid, int64(ord))
 			})
 		},
 	}
