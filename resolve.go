@@ -1,16 +1,20 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	dbq "github.com/kirozen/sdd/db"
 )
 
-// queryer is the shared surface of *sql.DB and *sql.Tx, so ordinal/cite helpers
-// work both inside and outside a transaction.
+// queryer is the shared surface of *sql.DB and *sql.Tx, so the remaining cite/PK
+// helpers work both inside and outside a transaction. The generated dbq.DBTX
+// plays the same role for sqlc methods (and is satisfied by both too).
 type queryer interface {
 	QueryRow(query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
@@ -42,18 +46,36 @@ func openProjectContext() (*sql.DB, int64, string, error) {
 }
 
 // nextOrd returns the next per-project display ordinal for a durable/feature
-// table (V26): max(ord)+1 over the project's rows.
-func nextOrd(q queryer, table string, projectID int64) (int, error) {
-	var n int
-	err := q.QueryRow(`SELECT COALESCE(MAX(ord),0)+1 FROM "`+table+`" WHERE project_id=?`, projectID).Scan(&n)
-	return n, err
+// table (V26): max(ord)+1 over the project's rows. The runtime table name is now
+// a switch over one typed query per kind (V50) — no interpolated SQL. Accepts
+// dbq.DBTX so it runs against *sql.DB or a *sql.Tx (e.g. inside addBug).
+func nextOrd(q dbq.DBTX, table string, projectID int64) (int, error) {
+	ctx := context.Background()
+	qs := dbq.New(q)
+	pid := nz(projectID)
+	var (
+		n   int64
+		err error
+	)
+	switch table {
+	case "invariant":
+		n, err = qs.NextInvariantOrd(ctx, pid)
+	case "bug":
+		n, err = qs.NextBugOrd(ctx, pid)
+	case "research":
+		n, err = qs.NextResearchOrd(ctx, pid)
+	case "feature":
+		n, err = qs.NextFeatureOrd(ctx, pid)
+	default:
+		return 0, fmt.Errorf("nextOrd: unknown table %q", table)
+	}
+	return int(n), err
 }
 
 // nextTaskOrd is nextOrd for tasks, whose project is reached through feature.
-func nextTaskOrd(q queryer, projectID int64) (int, error) {
-	var n int
-	err := q.QueryRow(`SELECT COALESCE(MAX(t.ord),0)+1 FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=?`, projectID).Scan(&n)
-	return n, err
+func nextTaskOrd(q dbq.DBTX, projectID int64) (int, error) {
+	n, err := dbq.New(q).NextTaskOrd(context.Background(), nz(projectID))
+	return int(n), err
 }
 
 // gitOutput runs git in dir and returns trimmed stdout.
@@ -134,9 +156,10 @@ func projectIdentity(dir string) (url string, hasURL bool, path string, err erro
 // lookupProject finds a project by the dual key, url first (so clones of one
 // remote share a project), then path.
 func lookupProject(db *sql.DB, url string, hasURL bool, path string) (int64, bool, error) {
+	q := dbq.New(db)
+	ctx := context.Background()
 	if hasURL {
-		var id int64
-		switch err := db.QueryRow(`SELECT id FROM project WHERE url=?`, url).Scan(&id); err {
+		switch id, err := q.ProjectByURL(ctx, sql.NullString{String: url, Valid: true}); err {
 		case nil:
 			return id, true, nil
 		case sql.ErrNoRows:
@@ -145,8 +168,7 @@ func lookupProject(db *sql.DB, url string, hasURL bool, path string) (int64, boo
 			return 0, false, err
 		}
 	}
-	var id int64
-	switch err := db.QueryRow(`SELECT id FROM project WHERE path=?`, path).Scan(&id); err {
+	switch id, err := q.ProjectByPath(ctx, path); err {
 	case nil:
 		return id, true, nil
 	case sql.ErrNoRows:
@@ -160,7 +182,9 @@ func lookupProject(db *sql.DB, url string, hasURL bool, path string) (int64, boo
 // remote added after init), so adding a remote never orphans the project (V21).
 func backfillURL(db *sql.DB, id int64, url string, hasURL bool) {
 	if hasURL {
-		db.Exec(`UPDATE project SET url=? WHERE id=? AND url IS NULL`, url, id)
+		dbq.New(db).BackfillProjectURL(context.Background(), dbq.BackfillProjectURLParams{
+			Url: sql.NullString{String: url, Valid: true}, ID: id,
+		})
 	}
 }
 
@@ -179,15 +203,11 @@ func findOrCreateProject(db *sql.DB, dir string) (int64, error) {
 		backfillURL(db, id, url, hasURL)
 		return id, nil
 	}
-	var u interface{}
+	u := sql.NullString{}
 	if hasURL {
-		u = url
+		u = sql.NullString{String: url, Valid: true}
 	}
-	res, err := db.Exec(`INSERT INTO project(url, path) VALUES(?, ?)`, u, path)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	return dbq.New(db).CreateProject(context.Background(), dbq.CreateProjectParams{Url: u, Path: path})
 }
 
 // resolveProject returns the project for dir, erroring if none is registered —
