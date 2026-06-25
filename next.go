@@ -3,7 +3,34 @@ package main
 import (
 	"database/sql"
 	"fmt"
+
+	"github.com/spf13/cobra"
 )
+
+// newNextCmd wires `sdd next` (I.next): print the next actionable task with its
+// context, or the empty-case hint. Read-only (V16), project-scoped (V20).
+func newNextCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "next",
+		Short: "next actionable task + its goal and resolved cites, read-only",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			db, pid, _, err := openProjectContext()
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+			lines, err := nextOutput(db, pid)
+			if err != nil {
+				return err
+			}
+			for _, l := range lines {
+				fmt.Println(l)
+			}
+			return nil
+		},
+	}
+}
 
 // nextResult is the chosen actionable task plus the context that explains it:
 // the owning feature, all its goals (V33), the task's caveman line, and each
@@ -64,6 +91,86 @@ func nextActionable(db *sql.DB, projectID int64) (*nextResult, error) {
 		taskLine:  fmtTaskLine(taskOrd, status, text, cites),
 		citeLines: citeLines,
 	}, nil
+}
+
+// nextOutput is the full line set `sdd next` prints: the actionable task block
+// when one exists, else the empty-case hint (V31). Read-pure throughout.
+func nextOutput(db *sql.DB, projectID int64) ([]string, error) {
+	r, err := nextActionable(db, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if r != nil {
+		return renderNext(r), nil
+	}
+	return emptyHint(db, projectID)
+}
+
+// renderNext frames the chosen task with its context: the feature, every goal
+// (V33), the task's caveman line and each resolved cite — task/cite lines are
+// byte-identical to their spec rows (V18); the rest is framing.
+func renderNext(r *nextResult) []string {
+	out := []string{fmt.Sprintf("F%d %s", r.featOrd, r.featName)}
+	for _, g := range r.goals {
+		out = append(out, "§G "+g)
+	}
+	out = append(out, r.taskLine)
+	for _, c := range r.citeLines {
+		out = append(out, "  "+c)
+	}
+	return out
+}
+
+// emptyHint covers V31's no-actionable-task cases: a feature still awaiting
+// spec (seeded/grilled) is pointed at; otherwise, with features present and all
+// built, the project is up to date; with no feature at all, point at the grill.
+func emptyHint(db *sql.DB, projectID int64) ([]string, error) {
+	rows, err := db.Query(`SELECT ord, name, id FROM feature WHERE project_id=? ORDER BY ord`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	type feat struct {
+		ord  int
+		name string
+		pk   int64
+	}
+	var feats []feat
+	for rows.Next() {
+		var f feat
+		if err := rows.Scan(&f.ord, &f.name, &f.pk); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		feats = append(feats, f)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(feats) == 0 {
+		return []string{"no feature yet — start with sdd-grill, then sdd new-feature"}, nil
+	}
+	var awaiting []string
+	for _, f := range feats {
+		stage, err := featureStage(db, f.pk)
+		if err != nil {
+			return nil, err
+		}
+		if stageBeforeSpec(stage) {
+			awaiting = append(awaiting, fmt.Sprintf("F%d %s awaits spec (%s) — run sdd-spec", f.ord, f.name, stage))
+		}
+	}
+	if len(awaiting) > 0 {
+		return awaiting, nil
+	}
+	return []string{"project up to date — every task done"}, nil
+}
+
+// stageBeforeSpec reports whether a stage precedes "specced": a feature with no
+// tasks yet still awaits sdd-spec, so next must not claim the project is done.
+func stageBeforeSpec(stage string) bool {
+	return stage == "seeded" || stage == "grilled"
 }
 
 // featureGoals returns every goal of a feature in display order (V33: 0..N,
