@@ -6,10 +6,10 @@
 .PHONY: build test vet gen fmt align upgrade gate
 
 build:
-	go build -o sdd .
+	CGO_ENABLED=0 go build -trimpath -o sdd .
 
 test:
-	go test ./...
+	go tool gotestsum --format-hide-empty-pkg ./...
 
 vet:
 	go vet ./...
@@ -17,13 +17,12 @@ vet:
 gen:
 	go tool sqlc generate
 
-# fmt/align act ONLY on the sole hand-written package (root `.`); the generated
-# db/ package is excluded by construction (V78). Safe forms only: `gofumpt -w
-# *.go` (root glob, non-recursive) and `betteralign -apply .` (root package, NOT
-# ./...). Reformatting db/ would diverge from fresh sqlc codegen and break the
-# gate (V54).
+# fmt/align never reach the generated db/ package: gofumpt and betteralign both
+# skip files marked `// Code generated ... DO NOT EDIT.`, so the invocation form
+# (recursive or scoped) is irrelevant to db/ (V78). The gate's git diff is the
+# real backstop (V54).
 fmt:
-	go tool gofumpt -w *.go
+	go tool gofumpt -l -w -extra .
 
 # betteralign is a go/analysis tool: it applies the safe reorders but still exits
 # non-zero (3) while any finding remains — including structs it cannot auto-fix
@@ -35,8 +34,11 @@ align:
 # Interactive TUI — manual only, kept out of the gate.
 upgrade:
 	go tool go-mod-upgrade
+	go mod tidy
 
 # Non-interactive gate, mirrors CLAUDE.md: build + vet + test + codegen
 # reproducibility (`sqlc generate` must leave the tree byte-clean, V54).
 gate: build vet test gen
 	git diff --exit-code
+
+before-commit: gen align fmt test vet build
