@@ -162,3 +162,55 @@ func TestMigrateChainV2toV4(t *testing.T) {
 		t.Errorf("feature lost after chained migrate: name=%q err=%v", name, err)
 	}
 }
+
+// V59/V60: the explicit userVersion anchor must equal the last derived step's
+// version (prefix+1) — NOT merely the file count, so a numbering gap is caught
+// here, not masked. A forgotten bump after adding a 00N file, or an orphan file
+// without a bump, fails this. Guards the runtime mis-stamp V60 describes: a
+// userVersion below the last applied step would re-exec a non-IF-NOT-EXISTS
+// CREATE TABLE on the next open.
+func TestUserVersionMatchesEmbeddedSteps(t *testing.T) {
+	last := steps[len(steps)-1].version
+	if userVersion != last {
+		t.Errorf("userVersion = %d, but the last embedded step targets v%d — bump userVersion or check db/schema (V59/V60)", userVersion, last)
+	}
+}
+
+// V59: 00N_*.sql maps to schema version N+1 (001_base = v2) over a contiguous,
+// well-formed set.
+func TestStepVersionsAcceptsContiguous(t *testing.T) {
+	got := stepVersions([]string{"001_base.sql", "002_x.sql", "003_y.sql"})
+	want := []int{2, 3, 4}
+	if len(got) != len(want) {
+		t.Fatalf("stepVersions len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("stepVersions[%d] = %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
+// V60: stepVersions enforces the filename contract it derives from, panicking on
+// any violation — a malformed name, a numbering gap, a missing 001 base, or an
+// empty set — so a bad file can never silently corrupt the derived chain.
+func TestStepVersionsRejectsBadFilenames(t *testing.T) {
+	cases := map[string][]string{
+		"empty set":          {},
+		"missing 001 base":   {"002_unknown.sql"},
+		"gap in numbering":   {"001_base.sql", "002_x.sql", "004_y.sql"},
+		"non-numeric prefix": {"001_base.sql", "00a_x.sql"},
+		"too-short prefix":   {"001_base.sql", "02_x.sql"},
+		"no prefix":          {"001_base.sql", "notes.sql"},
+	}
+	for name, names := range cases {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("stepVersions(%v) did not panic", names)
+				}
+			}()
+			stepVersions(names)
+		})
+	}
+}

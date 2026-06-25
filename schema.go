@@ -49,33 +49,49 @@ type ddlStep struct {
 // 3-digit zero-padded prefix, then "_<name>.sql" (V60).
 var schemaFileRe = regexp.MustCompile(`^(\d{3})_.*\.sql$`)
 
+// stepVersions validates the filename contract (V60) over the schema file names
+// — given in fs.ReadDir's sorted order — and returns each file's target version
+// (prefix+1, so 001->v2). It panics on any violation, a build-time wiring error
+// like mustDDL: every name matches schemaFileRe and the prefixes are contiguous
+// from 001 (no gap, no missing base). That contiguity is what makes "last step
+// == file count + 1" hold, so a forgotten/renamed file is caught, never
+// silently mis-stamped. Pure (no embed access) so the contract is unit-testable.
+func stepVersions(names []string) []int {
+	if len(names) == 0 {
+		panic("embedded db/schema: no DDL files (V60)")
+	}
+	versions := make([]int, len(names))
+	for i, name := range names {
+		m := schemaFileRe.FindStringSubmatch(name)
+		if m == nil {
+			panic(fmt.Sprintf("embedded db/schema/%s: name breaks the NNN_*.sql contract (V60)", name))
+		}
+		n, _ := strconv.Atoi(m[1]) // 3 digits, cannot fail
+		if n != i+1 {
+			panic(fmt.Sprintf("embedded db/schema: prefix gap at %s — expected %03d_*.sql (contiguous from 001, V60)", name, i+1))
+		}
+		versions[i] = n + 1
+	}
+	return versions
+}
+
 // schemaSteps derives the ordered migration chain from the embedded db/schema
 // files rather than a hand-kept map (V59): fs.ReadDir returns them sorted by
-// name, and file 00N_*.sql produces schema version N+1 (001_base = v2). It
-// ENFORCES the filename contract it trusts (V60), panicking on any violation —
-// a build-time wiring error like mustDDL: every entry matches schemaFileRe and
-// the prefixes are contiguous from 001 (no gap, no missing base). That
-// contiguity is what makes "last step == file count + 1" hold, so a
-// forgotten/renamed file is caught here, never silently mis-stamped.
+// name, and file 00N_*.sql produces schema version N+1 (001_base = v2). The
+// filename contract is enforced by stepVersions (V60).
 func schemaSteps() []ddlStep {
 	entries, err := fs.ReadDir(schemaFS, "db/schema")
 	if err != nil {
 		panic(fmt.Sprintf("read embedded db/schema: %v", err))
 	}
-	steps := make([]ddlStep, 0, len(entries))
+	names := make([]string, len(entries))
 	for i, e := range entries {
-		m := schemaFileRe.FindStringSubmatch(e.Name())
-		if m == nil {
-			panic(fmt.Sprintf("embedded db/schema/%s: name breaks the NNN_*.sql contract (V60)", e.Name()))
-		}
-		n, _ := strconv.Atoi(m[1]) // 3 digits, cannot fail
-		if n != i+1 {
-			panic(fmt.Sprintf("embedded db/schema: prefix gap at %s — expected %03d_*.sql (contiguous from 001, V60)", e.Name(), i+1))
-		}
-		steps = append(steps, ddlStep{version: n + 1, sql: mustDDL(e.Name())})
+		names[i] = e.Name()
 	}
-	if len(steps) == 0 {
-		panic("embedded db/schema: no DDL files (V60)")
+	versions := stepVersions(names)
+	steps := make([]ddlStep, len(names))
+	for i, name := range names {
+		steps[i] = ddlStep{version: versions[i], sql: mustDDL(name)}
 	}
 	return steps
 }
