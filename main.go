@@ -17,6 +17,7 @@ func newRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newExportCmd())
+	root.AddCommand(newCatCmd())
 	root.AddCommand(newNewFeatureCmd())
 	root.AddCommand(newAddGoalCmd())
 	root.AddCommand(newAddConstraintCmd())

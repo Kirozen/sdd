@@ -77,6 +77,41 @@ func allFeatures(db *sql.DB, projectID int64) ([]featureRow, error) {
 	return out, nil
 }
 
+// openFeatures = the unfinished features (V75): not in the built stage — a
+// non-x task OR zero tasks. Empty (all built) is valid, not an error.
+func openFeatures(db *sql.DB, projectID int64) ([]featureRow, error) {
+	rows, err := dbq.New(db).OpenFeaturesByProject(context.Background(), projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]featureRow, len(rows))
+	for i, r := range rows {
+		out[i] = featureRow{ID: r.ID, Ord: r.Ord, Name: r.Name}
+	}
+	return out, nil
+}
+
+// featureByOrd selects exactly one feature by its ordinal; an unknown ord is an
+// error so `sdd cat --feature N` exits non-zero (V75), unlike the open selector.
+func featureByOrd(ord int64) featureSel {
+	return func(db *sql.DB, projectID int64) ([]featureRow, error) {
+		rows, err := dbq.New(db).FeatureByOrd(context.Background(), dbq.FeatureByOrdParams{
+			ProjectID: projectID, Ord: ord,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			return nil, fmt.Errorf("no feature %d in this project", ord)
+		}
+		out := make([]featureRow, len(rows))
+		for i, r := range rows {
+			out[i] = featureRow{ID: r.ID, Ord: r.Ord, Name: r.Name}
+		}
+		return out, nil
+	}
+}
+
 // renderSpec renders the FULL spec (all features) to SPEC.md text. Both
 // exportSpec and checkSpec call it, so the whole-file render IS the V6 drift
 // contract (V77); the scoped path (sdd cat) goes through renderSpecScoped.
