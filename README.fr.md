@@ -131,22 +131,36 @@ actionnable avec son goal et ses citations résolues.
 
 **Mutations éphémères (par feature)** : `new-feature`, `add-goal`,
 `add-constraint`, `add-task`, `set-task`, `wipe-feature`, `add-unknown`,
-`resolve-unknown`, `gate`
+`resolve-unknown`, `gate`, `rm-task`, `rm-goal`, `rm-constraint`
 
 **Mutations durables** : `add-invariant`, `add-interface`, `add-bug`,
-`add-research`, `add-test`, `edit`, `deprecate-interface`
+`add-research`, `add-test`, `edit`, `deprecate-interface`, `retract-invariant`,
+`retract-interface`
 
 **Lectures (pures, sans ré-export)** : `show`, `list` (avec `--pretty`, et pour
-les tâches `--status`/`--feature`), `refs`, `status`, `next`, `guide`, `cover`
+les tâches `--status`/`--feature`), `refs`, `status`, `next`, `guide`, `cover`,
+`search`, `projects`
 
 Statuts de tâche : `.` à faire · `~` en cours · `x` fait.
 Statuts d'unknown : `open` · `resolved` (jamais supprimé).
 Verdicts de gate : `go` · `no-go` (un seul par feature, le dernier remplace).
 
+**La rétraction** (`retract-invariant`, `retract-interface`, `rm-task`,
+`rm-goal`, `rm-constraint`) supprime *réellement* une ligne — contrairement à
+`deprecate-interface` qui ne fait que marquer. Une ligne durable **citée** ne
+peut pas être retirée (la commande refuse en listant ses citants) ; on retire
+d'abord ce qui la cite. `retract-invariant` prévient quand il emporte au passage
+les tests qui le prouvent. `rm-goal`/`rm-constraint` ciblent la *n*-ième ligne
+d'une feature (`sdd rm-goal <F-ord> <n>`, 1-based, dans l'ordre affiché).
+
 Quelques commandes utiles pour s'y retrouver : `sdd guide` (où en est chaque
 feature, et quelle skill lancer ensuite), `sdd next` (la prochaine tâche
 actionnable, avec son goal et ses citations résolues), `sdd cover` (quels
-invariants sont gardés par un test, lesquels ne le sont pas).
+invariants sont gardés par un test, lesquels ne le sont pas), `sdd search
+<terme>` (recherche plein-texte sur le *contenu* des lignes du projet courant —
+là où `refs` cherche par clé de citation), `sdd projects` (tous les projets du
+store global avec leurs compteurs ; la seule commande qui regarde au-delà du
+projet courant).
 
 ## Où vivent les données
 
