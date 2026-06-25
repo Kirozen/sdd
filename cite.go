@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 
@@ -15,26 +14,19 @@ import (
 // cites resolve and are FK-guarded identically (V5, V74). All cites go in one
 // transaction: a single bad cite (orphan, or already present → join-table PK)
 // rolls the whole thing back, so a partial attach never survives.
-func addCites(db *sql.DB, projectID, taskOrd int64, cites []string) error {
+func addCites(db dbq.DBTX, projectID, taskOrd int64, cites []string) error {
 	taskPK, err := dbq.New(db).TaskPKByOrd(context.Background(), dbq.TaskPKByOrdParams{
 		ProjectID: projectID, Ord: taskOrd,
 	})
 	if err != nil {
 		return fmt.Errorf("no task T%d in this project", taskOrd)
 	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
 	for _, c := range cites {
-		if err := insertCite(tx, projectID, taskPK, c); err != nil {
+		if err := insertCite(db, projectID, taskPK, c); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func newAddCiteCmd() *cobra.Command {
@@ -47,7 +39,7 @@ func newAddCiteCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bad task id %q", args[0])
 			}
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				if err := addCites(db, pid, ord, args[1:]); err != nil {
 					return "", err
 				}

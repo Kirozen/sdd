@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 
@@ -13,7 +12,7 @@ import (
 // setTaskStatus updates a task's status, addressing it by per-project ordinal.
 // The schema CHECK rejects any value outside {.,~,x} (V10); an unknown task is
 // an error.
-func setTaskStatus(db *sql.DB, projectID, taskOrd int64, status string) error {
+func setTaskStatus(db dbq.DBTX, projectID, taskOrd int64, status string) error {
 	n, err := dbq.New(db).SetTaskStatus(context.Background(), dbq.SetTaskStatusParams{
 		Status: status, Ord: taskOrd, ProjectID: projectID,
 	})
@@ -37,7 +36,7 @@ func newSetTaskCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bad task id %q", args[0])
 			}
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				return fmt.Sprintf("T%d → %s", id, status), setTaskStatus(db, pid, id, status)
 			})
 		},

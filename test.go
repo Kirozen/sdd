@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,7 +15,7 @@ import (
 // is rejected (the declared-link analogue of the cite FK, V5). Re-adding the
 // same (invariant, name) is a no-op, not an error — UNIQUE(invariant_id,name)
 // plus ON CONFLICT DO NOTHING (V42).
-func addTest(db *sql.DB, projectID, invOrd int64, name string) error {
+func addTest(db dbq.DBTX, projectID, invOrd int64, name string) error {
 	q := dbq.New(db)
 	ctx := context.Background()
 	invPK, err := q.InvariantIDByOrd(ctx, dbq.InvariantIDByOrdParams{ProjectID: projectID, Ord: invOrd})
@@ -46,7 +45,7 @@ func newAddTestCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				return fmt.Sprintf("V%d ← %s", ord, args[1]), addTest(db, pid, ord, args[1])
 			})
 		},

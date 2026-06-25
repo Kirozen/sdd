@@ -1,9 +1,26 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 )
+
+// mustFailInTx runs fn inside a tx and asserts it errors, then rolls back. Post
+// T67 the mutation cores no longer own a transaction (V71): atomicity is the
+// caller's tx, so a core that fails mid-way persists nothing only because the
+// caller (runMutation/apply — here this helper) rolls back.
+func mustFailInTx(t *testing.T, db *sql.DB, fn func(tx *sql.Tx) error) {
+	t.Helper()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
 
 func TestAddTaskWithCites(t *testing.T) {
 	db := openTestDB(t)
@@ -41,9 +58,10 @@ func TestAddTaskOrphanInvRollback(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
 	fid, _ := addFeature(db, pid, "f")
-	if _, err := addTask(db, pid, fid, "t", []string{"V999"}); err == nil {
-		t.Fatal("orphan invariant cite accepted")
-	}
+	mustFailInTx(t, db, func(tx *sql.Tx) error {
+		_, e := addTask(tx, pid, fid, "t", []string{"V999"})
+		return e
+	})
 	if n := count(t, db, "task"); n != 0 {
 		t.Errorf("task rows after failed add = %d, want 0 (not atomic)", n)
 	}
@@ -54,9 +72,10 @@ func TestAddTaskUnknownInterfaceRollback(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
 	fid, _ := addFeature(db, pid, "f")
-	if _, err := addTask(db, pid, fid, "t", []string{"I.nope"}); err == nil {
-		t.Fatal("unknown interface cite accepted")
-	}
+	mustFailInTx(t, db, func(tx *sql.Tx) error {
+		_, e := addTask(tx, pid, fid, "t", []string{"I.nope"})
+		return e
+	})
 	if n := count(t, db, "task"); n != 0 {
 		t.Errorf("task rows after failed add = %d, want 0 (not atomic)", n)
 	}
@@ -90,9 +109,10 @@ func TestAddBugFix(t *testing.T) {
 func TestAddBugOrphanFixRollback(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
-	if _, err := addBug(db, pid, "2026-06-24", "cause", []string{"V999"}); err == nil {
-		t.Fatal("orphan fix accepted")
-	}
+	mustFailInTx(t, db, func(tx *sql.Tx) error {
+		_, e := addBug(tx, pid, "2026-06-24", "cause", []string{"V999"})
+		return e
+	})
 	if n := count(t, db, "bug"); n != 0 {
 		t.Errorf("bug rows after failed add = %d, want 0 (not atomic)", n)
 	}

@@ -16,7 +16,7 @@ import (
 // verdict wins and history is not kept. recorded_at stamps when the verdict was
 // taken — the honest limit is that it does not auto-invalidate on later spec
 // edits (V48). Scoped to the project via featurePK (V20).
-func setGate(db *sql.DB, projectID, featOrd int64, verdict, note string) error {
+func setGate(db dbq.DBTX, projectID, featOrd int64, verdict, note string) error {
 	pk, err := featurePK(db, projectID, featOrd)
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func newGateCmd() *cobra.Command {
 			if isNoGo {
 				verdict = "no-go"
 			}
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				return fmt.Sprintf("F%d gate → %s", ord, verdict), setGate(db, pid, ord, verdict, note)
 			})
 		},

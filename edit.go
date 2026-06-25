@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func addResearch(db *sql.DB, projectID int64, topic, finding, src string) (int64, error) {
+func addResearch(db dbq.DBTX, projectID int64, topic, finding, src string) (int64, error) {
 	ord, err := nextOrd(db, "research", projectID)
 	if err != nil {
 		return 0, err
@@ -26,7 +25,7 @@ func addResearch(db *sql.DB, projectID int64, topic, finding, src string) (int64
 // editRow updates a row's primary text field by the right typed query per kind
 // (V50: no interpolated table/column). The row id never changes, so citations
 // stay valid (V12); n==0 means the addressed row is absent in this project.
-func editRow(db *sql.DB, projectID int64, kind, key, text string) error {
+func editRow(db dbq.DBTX, projectID int64, kind, key, text string) error {
 	ctx := context.Background()
 	q := dbq.New(db)
 	var (
@@ -79,7 +78,7 @@ func editRow(db *sql.DB, projectID int64, kind, key, text string) error {
 
 // deprecateInterface flips an interface to deprecated within the project.
 // Interfaces are never hard-deleted; deprecation preserves history (V11).
-func deprecateInterface(db *sql.DB, projectID int64, name string) error {
+func deprecateInterface(db dbq.DBTX, projectID int64, name string) error {
 	n, err := dbq.New(db).DeprecateInterface(context.Background(), dbq.DeprecateInterfaceParams{
 		ProjectID: projectID, Name: name,
 	})
@@ -98,7 +97,7 @@ func newAddResearchCmd() *cobra.Command {
 		Short: "add a durable research finding",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				ord, err := addResearch(db, pid, args[0], args[1], args[2])
 				return fmt.Sprintf("R%d", ord), err
 			})
@@ -113,7 +112,7 @@ func newEditCmd() *cobra.Command {
 		Short: "edit a row's text in place (key: ordinal, or interface name)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				return fmt.Sprintf("edited %s %s", args[0], args[1]), editRow(db, pid, args[0], args[1], text)
 			})
 		},
@@ -129,7 +128,7 @@ func newDeprecateInterfaceCmd() *cobra.Command {
 		Short: "mark an interface deprecated (never hard-deleted)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				return fmt.Sprintf("deprecated interface %s", args[0]), deprecateInterface(db, pid, args[0])
 			})
 		},

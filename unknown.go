@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 
@@ -12,14 +11,14 @@ import (
 
 // nextUnknownOrd is the next per-project display ordinal U<n> for unknowns,
 // whose project is reached through their feature (V26, like nextTaskOrd).
-func nextUnknownOrd(db *sql.DB, projectID int64) (int, error) {
+func nextUnknownOrd(db dbq.DBTX, projectID int64) (int, error) {
 	n, err := dbq.New(db).NextUnknownOrd(context.Background(), projectID)
 	return int(n), err
 }
 
 // addUnknown records a parked question on a feature as an open unknown (V35),
 // returning its per-project ordinal U<n>.
-func addUnknown(db *sql.DB, projectID, featurePK int64, text string) (int, error) {
+func addUnknown(db dbq.DBTX, projectID, featurePK int64, text string) (int, error) {
 	ord, err := nextUnknownOrd(db, projectID)
 	if err != nil {
 		return 0, err
@@ -34,7 +33,7 @@ func addUnknown(db *sql.DB, projectID, featurePK int64, text string) (int, error
 
 // resolveUnknown marks an unknown resolved by its per-project ordinal, scoped to
 // the project (V20, V26); never hard-deletes (V35). Unknown ordinal → error.
-func resolveUnknown(db *sql.DB, projectID, ord int64) error {
+func resolveUnknown(db dbq.DBTX, projectID, ord int64) error {
 	n, err := dbq.New(db).ResolveUnknown(context.Background(), dbq.ResolveUnknownParams{
 		Ord: ord, ProjectID: projectID,
 	})
@@ -54,7 +53,7 @@ func newAddUnknownCmd() *cobra.Command {
 		Short: "park an open unknown (question) on a feature",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				pk, err := featurePK(db, pid, feature)
 				if err != nil {
 					return "", err
@@ -79,7 +78,7 @@ func newResolveUnknownCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("bad unknown ordinal %q", args[0])
 			}
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				return fmt.Sprintf("U%d → resolved", ord), resolveUnknown(db, pid, ord)
 			})
 		},

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,7 +19,7 @@ import (
 
 // addFeature inserts a feature with the next per-project ordinal and returns its
 // global PK (callers attach goals/constraints/tasks to it).
-func addFeature(db *sql.DB, projectID int64, name string) (int64, error) {
+func addFeature(db dbq.DBTX, projectID int64, name string) (int64, error) {
 	ord, err := nextOrd(db, "feature", projectID)
 	if err != nil {
 		return 0, err
@@ -42,15 +41,15 @@ func featurePK(q dbq.DBTX, projectID, ord int64) (int64, error) {
 	return pk, nil
 }
 
-func addGoal(db *sql.DB, featurePK int64, text string) error {
+func addGoal(db dbq.DBTX, featurePK int64, text string) error {
 	return dbq.New(db).InsertGoal(context.Background(), dbq.InsertGoalParams{FeatureID: featurePK, Text: text})
 }
 
-func addConstraint(db *sql.DB, featurePK int64, text string) error {
+func addConstraint(db dbq.DBTX, featurePK int64, text string) error {
 	return dbq.New(db).InsertConstraint(context.Background(), dbq.InsertConstraintParams{FeatureID: featurePK, Text: text})
 }
 
-func addInvariant(db *sql.DB, projectID int64, text string) (int64, error) {
+func addInvariant(db dbq.DBTX, projectID int64, text string) (int64, error) {
 	ord, err := nextOrd(db, "invariant", projectID)
 	if err != nil {
 		return 0, err
@@ -63,7 +62,7 @@ func addInvariant(db *sql.DB, projectID int64, text string) (int64, error) {
 	return int64(ord), nil
 }
 
-func addInterface(db *sql.DB, projectID int64, kind, name, sig string) (int64, error) {
+func addInterface(db dbq.DBTX, projectID int64, kind, name, sig string) (int64, error) {
 	return dbq.New(db).InsertInterface(context.Background(), dbq.InsertInterfaceParams{
 		ProjectID: projectID, Kind: kind, Name: name, Sig: sig,
 	})
@@ -72,30 +71,21 @@ func addInterface(db *sql.DB, projectID int64, kind, name, sig string) (int64, e
 // addTask inserts a task and its cites in one transaction: a single bad cite
 // rolls the whole thing back, so no orphan task survives (V2, V5). The task
 // belongs to projectID (via featurePK); cites resolve within that project (V20).
-func addTask(db *sql.DB, projectID, featurePK int64, text string, cites []string) (int64, error) {
-	tx, err := db.Begin()
+func addTask(db dbq.DBTX, projectID, featurePK int64, text string, cites []string) (int64, error) {
+	ord, err := nextTaskOrd(db, projectID)
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
-
-	ord, err := nextTaskOrd(tx, projectID)
-	if err != nil {
-		return 0, err
-	}
-	taskID, err := dbq.New(tx).InsertTask(context.Background(), dbq.InsertTaskParams{
+	taskID, err := dbq.New(db).InsertTask(context.Background(), dbq.InsertTaskParams{
 		FeatureID: featurePK, Ord: int64(ord), Text: text,
 	})
 	if err != nil {
 		return 0, err
 	}
 	for _, c := range cites {
-		if err := insertCite(tx, projectID, taskID, c); err != nil {
+		if err := insertCite(db, projectID, taskID, c); err != nil {
 			return 0, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
 	}
 	return taskID, nil
 }
@@ -103,9 +93,9 @@ func addTask(db *sql.DB, projectID, featurePK int64, text string, cites []string
 // insertCite links a task to a cited row, resolving the cite within the task's
 // project (V20): V<ord> → the invariant with that ord, I.<name> → the interface
 // with that name. A cross-project or unknown ord/name finds nothing and rejects.
-func insertCite(tx *sql.Tx, projectID, taskID int64, cite string) error {
+func insertCite(db dbq.DBTX, projectID, taskID int64, cite string) error {
 	ctx := context.Background()
-	q := dbq.New(tx)
+	q := dbq.New(db)
 	switch {
 	case strings.HasPrefix(cite, "V"):
 		ord, err := strconv.Atoi(cite[1:])
@@ -136,19 +126,13 @@ func insertCite(tx *sql.Tx, projectID, taskID int64, cite string) error {
 
 // addBug inserts a bug and its fix links in one transaction. Fix refs resolve
 // to invariants by per-project ordinal (V20, V26).
-func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (int64, error) {
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
-	ord, err := nextOrd(tx, "bug", projectID)
+func addBug(db dbq.DBTX, projectID int64, date, cause string, fixRefs []string) (int64, error) {
+	ord, err := nextOrd(db, "bug", projectID)
 	if err != nil {
 		return 0, err
 	}
 	ctx := context.Background()
-	q := dbq.New(tx)
+	q := dbq.New(db)
 	bugID, err := q.InsertBug(ctx, dbq.InsertBugParams{
 		ProjectID: projectID, Ord: int64(ord), Date: date, Cause: cause,
 	})
@@ -168,23 +152,28 @@ func addBug(db *sql.DB, projectID int64, date, cause string, fixRefs []string) (
 			return 0, fmt.Errorf("fix %s: %w", ref, err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
 	return int64(ord), nil
 }
 
 // runMutation opens the global db, resolves the current project, runs the
 // mutation fn inside it, then re-exports SPEC.md atomically (V8). The returned
 // message (if any) is printed on success.
-func runMutation(fn func(*sql.DB, int64) (string, error)) error {
+func runMutation(fn func(dbq.DBTX, int64) (string, error)) error {
 	db, pid, specFile, err := openProjectContext()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	msg, err := fn(db, pid)
+	tx, err := db.Begin()
 	if err != nil {
+		return err
+	}
+	msg, err := fn(tx, pid)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	if err := exportSpec(db, pid, specFile); err != nil {
@@ -214,7 +203,7 @@ func newNewFeatureCmd() *cobra.Command {
 		Short: "create a feature, print its number",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				pk, err := addFeature(db, pid, args[0])
 				if err != nil {
 					return "", err
@@ -233,7 +222,7 @@ func newAddGoalCmd() *cobra.Command {
 		Short: "add a goal to a feature",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				pk, err := featurePK(db, pid, feature)
 				if err != nil {
 					return "", err
@@ -254,7 +243,7 @@ func newAddConstraintCmd() *cobra.Command {
 		Short: "add a constraint to a feature",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				pk, err := featurePK(db, pid, feature)
 				if err != nil {
 					return "", err
@@ -276,7 +265,7 @@ func newAddTaskCmd() *cobra.Command {
 		Short: "add a task to a feature, citing invariants/interfaces",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				pk, err := featurePK(db, pid, feature)
 				if err != nil {
 					return "", err
@@ -302,7 +291,7 @@ func newAddInvariantCmd() *cobra.Command {
 		Short: "add a durable invariant",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				ord, err := addInvariant(db, pid, args[0])
 				return fmt.Sprintf("V%d", ord), err
 			})
@@ -316,7 +305,7 @@ func newAddInterfaceCmd() *cobra.Command {
 		Short: "add a durable interface (name is the cite key I.<name>)",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				_, err := addInterface(db, pid, args[0], args[1], args[2])
 				return "I." + args[1], err
 			})
@@ -334,7 +323,7 @@ func newAddBugCmd() *cobra.Command {
 			if date == "" {
 				date = time.Now().Format("2006-01-02")
 			}
-			return runMutation(func(db *sql.DB, pid int64) (string, error) {
+			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				ord, err := addBug(db, pid, date, args[0], splitRefs(fix))
 				return fmt.Sprintf("B%d", ord), err
 			})

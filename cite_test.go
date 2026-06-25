@@ -44,9 +44,9 @@ func TestAddCitesOrphanRollsBackAll(t *testing.T) {
 	tpk, _ := addTask(db, pid, fid, "t", nil)
 	addInvariant(db, pid, "inv") // V1
 
-	if err := addCites(db, pid, ordOf(t, db, tpk), []string{"V1", "V99"}); err == nil {
-		t.Fatal("orphan cite accepted (V5)")
-	}
+	mustFailInTx(t, db, func(tx *sql.Tx) error {
+		return addCites(tx, pid, ordOf(t, db, tpk), []string{"V1", "V99"})
+	})
 	if got, _ := taskCites(db, tpk); got != "-" {
 		t.Errorf("partial attach survived rollback: cites = %q, want -", got)
 	}
