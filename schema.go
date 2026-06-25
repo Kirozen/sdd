@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
 )
 
@@ -12,137 +13,38 @@ import (
 // table (durable per-feature review verdict, V46).
 const userVersion = 5
 
-// schemaDDL is the full v2 schema: a global project layer (each row scoped to a
-// project), a durable layer that persists across features, an ephemeral feature
-// layer wiped via feature cascade (V4), and typed join tables carrying real
-// foreign keys (V5). project_id (V20) scopes durable rows + features; ord (V26)
-// is the per-(project,kind) display/cite ordinal.
-const schemaDDL = `
--- global project scope: every durable row + feature belongs to one project (V20).
--- identity is dual-key: url (canonical, nullable) OR main worktree path (V21).
-CREATE TABLE project (
-	id   INTEGER PRIMARY KEY,
-	url  TEXT UNIQUE,
-	path TEXT NOT NULL UNIQUE
-);
+// schemaFS embeds the DDL that is the SINGLE source for both the runtime migrator
+// (applySchema/migrate, below) and sqlc codegen (V51): sqlc reads these same
+// db/schema/*.sql files at `sqlc generate` time while the binary embeds them
+// here, so the codegen schema and the runtime schema cannot diverge. sqlc never
+// executes them — only this migrator does (V52). Files apply in filename order
+// (001 base before the 002+ additive steps, which FK back into it).
+//
+//go:embed db/schema/*.sql
+var schemaFS embed.FS
 
--- durable layer (persists across features; project-scoped)
-CREATE TABLE invariant (
-	id         INTEGER PRIMARY KEY,
-	project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
-	ord        INTEGER,
-	text       TEXT NOT NULL
-);
-CREATE TABLE interface (
-	id         INTEGER PRIMARY KEY,
-	project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
-	kind       TEXT NOT NULL,
-	name       TEXT NOT NULL,
-	sig        TEXT NOT NULL,
-	status     TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','deprecated')),
-	UNIQUE (project_id, name)
-);
-CREATE TABLE bug (
-	id         INTEGER PRIMARY KEY,
-	project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
-	ord        INTEGER,
-	date       TEXT NOT NULL,
-	cause      TEXT NOT NULL
-);
-CREATE TABLE research (
-	id         INTEGER PRIMARY KEY,
-	project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
-	ord        INTEGER,
-	topic      TEXT NOT NULL,
-	finding    TEXT NOT NULL,
-	src        TEXT NOT NULL
-);
+// mustDDL returns an embedded schema file's contents, panicking if it is missing
+// — a build-time wiring error, caught the first time any db is opened.
+func mustDDL(name string) string {
+	b, err := schemaFS.ReadFile("db/schema/" + name)
+	if err != nil {
+		panic(fmt.Sprintf("embedded schema %s: %v", name, err))
+	}
+	return string(b)
+}
 
--- feature layer (ephemeral; wiped per feature via feature cascade; project-scoped)
-CREATE TABLE feature (
-	id         INTEGER PRIMARY KEY,
-	project_id INTEGER REFERENCES project(id) ON DELETE CASCADE,
-	ord        INTEGER,
-	name       TEXT NOT NULL
-);
-CREATE TABLE goal (
-	id         INTEGER PRIMARY KEY,
-	feature_id INTEGER NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
-	text       TEXT NOT NULL
-);
-CREATE TABLE "constraint" (
-	id         INTEGER PRIMARY KEY,
-	feature_id INTEGER NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
-	text       TEXT NOT NULL
-);
-CREATE TABLE task (
-	id         INTEGER PRIMARY KEY,
-	feature_id INTEGER NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
-	ord        INTEGER,
-	text       TEXT NOT NULL,
-	status     TEXT NOT NULL DEFAULT '.' CHECK (status IN ('.','~','x'))
-);
-
--- typed join tables (real FK -> V5). cited durable rows are protected:
--- deleting an invariant/interface still referenced fails (NO ACTION).
-CREATE TABLE task_cites_inv (
-	task_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-	inv_id  INTEGER NOT NULL REFERENCES invariant(id),
-	PRIMARY KEY (task_id, inv_id)
-);
-CREATE TABLE task_cites_iface (
-	task_id  INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-	iface_id INTEGER NOT NULL REFERENCES interface(id),
-	PRIMARY KEY (task_id, iface_id)
-);
-CREATE TABLE bug_fix (
-	bug_id INTEGER NOT NULL REFERENCES bug(id) ON DELETE CASCADE,
-	inv_id INTEGER NOT NULL REFERENCES invariant(id),
-	PRIMARY KEY (bug_id, inv_id)
-);
-`
-
-// unknownDDL is the v3 addition, kept as its own constant so the fresh path
-// (applySchema) and the migration path (migrateV3) create byte-identical tables
-// from a single source (V36). unknown is feature-scoped (cascade per V4), with a
-// per-project ordinal U<n> (V26) and an open→resolved lifecycle (V35).
-const unknownDDL = `
-CREATE TABLE unknown (
-	id         INTEGER PRIMARY KEY,
-	feature_id INTEGER NOT NULL REFERENCES feature(id) ON DELETE CASCADE,
-	ord        INTEGER,
-	text       TEXT NOT NULL,
-	status     TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved'))
-);
-`
-
-// testDDL is the v4 addition (V42): a durable link from an invariant to a test
-// that proves it. UNIQUE(invariant_id, name) makes re-adding the same pair a
-// no-op rather than a silent duplicate; one test name may guard several
-// invariants (distinct rows). Kept as its own constant so the fresh path
-// (applySchema) and the migration path build byte-identical tables (V45).
-const testDDL = `
-CREATE TABLE test (
-	id           INTEGER PRIMARY KEY,
-	invariant_id INTEGER NOT NULL REFERENCES invariant(id) ON DELETE CASCADE,
-	name         TEXT NOT NULL,
-	UNIQUE (invariant_id, name)
-);
-`
-
-// gateDDL is the v5 addition (V46): a durable review verdict per feature.
-// feature_id UNIQUE gives the one-per-feature UPSERT a conflict target; the row
-// cascades with its feature (V4). Kept as its own constant so fresh and migrated
-// schemas match by construction (V45/V49).
-const gateDDL = `
-CREATE TABLE gate (
-	id          INTEGER PRIMARY KEY,
-	feature_id  INTEGER NOT NULL UNIQUE REFERENCES feature(id) ON DELETE CASCADE,
-	verdict     TEXT NOT NULL CHECK (verdict IN ('go','no-go')),
-	note        TEXT,
-	recorded_at TEXT NOT NULL
-);
-`
+// The base v2 schema and each additive step now live in db/schema/*.sql rather
+// than inline string constants, but applySchema/migrate are unchanged: the same
+// strings feed the fresh path and the migration path, so a fresh db is
+// byte-identical to a migrated one by construction (V45). 001_base.sql is the
+// full v2 schema (project scope V20, durable + ephemeral layers, typed FK joins
+// V5); the 00N files are the v(N+1) additive steps.
+var (
+	schemaDDL  = mustDDL("001_base.sql")
+	unknownDDL = mustDDL("002_unknown.sql")
+	testDDL    = mustDDL("003_test.sql")
+	gateDDL    = mustDDL("004_gate.sql")
+)
 
 // migrations maps each schema version > 2 to its additive DDL step. The same
 // constants feed both applySchema (fresh) and migrate (upgrade), so a fresh db
