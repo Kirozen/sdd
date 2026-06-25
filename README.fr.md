@@ -1,5 +1,7 @@
 # sdd — développement piloté par la spécification
 
+*[English version](README.md).*
+
 `sdd` est un moteur de spécification adossé à SQLite. La spec vit dans une base
 de données ; `SPEC.md` n'en est qu'une **vue Markdown générée** (jamais éditée à
 la main). Chaque mutation ré-exporte `SPEC.md` de façon atomique, si bien que le
