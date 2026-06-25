@@ -295,9 +295,9 @@ func alignRows(refs, bodies []string) []string {
 // task is a feature's task as the list/pretty paths consume it, decoupled from
 // the per-query generated row types (which all carry the same four fields).
 type taskRow struct {
+	status, text string
 	pk           int64
 	ord          int
-	status, text string
 }
 
 func listTasks(db *sql.DB, projectID int64) ([]string, error) {
@@ -333,7 +333,7 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
+			tasks = append(tasks, taskRow{pk: r.ID, ord: int(r.Ord), status: r.Status, text: r.Text})
 		}
 	case featureOrd > 0:
 		rows, err := q.TasksInProjectByFeature(ctx, dbq.TasksInProjectByFeatureParams{
@@ -343,7 +343,7 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
+			tasks = append(tasks, taskRow{pk: r.ID, ord: int(r.Ord), status: r.Status, text: r.Text})
 		}
 	case status != "":
 		rows, err := q.TasksInProjectByStatus(ctx, dbq.TasksInProjectByStatusParams{
@@ -353,7 +353,7 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
+			tasks = append(tasks, taskRow{pk: r.ID, ord: int(r.Ord), status: r.Status, text: r.Text})
 		}
 	default:
 		rows, err := q.TasksInProject(ctx, projectID)
@@ -361,7 +361,7 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 			return nil, err
 		}
 		for _, r := range rows {
-			tasks = append(tasks, taskRow{r.ID, int(r.Ord), r.Status, r.Text})
+			tasks = append(tasks, taskRow{pk: r.ID, ord: int(r.Ord), status: r.Status, text: r.Text})
 		}
 	}
 

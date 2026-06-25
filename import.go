@@ -18,26 +18,26 @@ import (
 type (
 	parsedIface struct{ kind, name, sig string }
 	parsedInv   struct {
-		id   int64
 		text string
+		id   int64
 	}
 )
 
 type parsedResearch struct {
-	id                  int64
 	topic, finding, src string
+	id                  int64
 }
 type parsedBug struct {
-	id    int64
 	date  string
 	cause string
 	fix   []string
+	id    int64
 }
 type parsedTask struct {
-	id     int64
 	status string
 	text   string
 	cites  []string
+	id     int64
 }
 
 type parsedSpec struct {
@@ -129,23 +129,23 @@ func parseSpec(content string) *parsedSpec {
 		case "R":
 			if c := splitPipe(trimmed); len(c) == 4 && c[0] != "id" {
 				if id, ok := rowID(c[0]); ok {
-					ps.research = append(ps.research, parsedResearch{id, c[1], c[2], c[3]})
+					ps.research = append(ps.research, parsedResearch{id: id, topic: c[1], finding: c[2], src: c[3]})
 				}
 			}
 		case "V":
 			if id, text, ok := parseInvariant(trimmed); ok {
-				ps.invariants = append(ps.invariants, parsedInv{id, text})
+				ps.invariants = append(ps.invariants, parsedInv{id: id, text: text})
 			}
 		case "B":
 			if c := splitPipe(trimmed); len(c) == 4 && c[0] != "id" {
 				if id, ok := rowID(c[0]); ok {
-					ps.bugs = append(ps.bugs, parsedBug{id, c[1], c[2], splitRefs(c[3])})
+					ps.bugs = append(ps.bugs, parsedBug{id: id, date: c[1], cause: c[2], fix: splitRefs(c[3])})
 				}
 			}
 		case "T":
 			if c := splitPipe(trimmed); len(c) == 4 && c[0] != "id" {
 				if id, ok := rowID(c[0]); ok {
-					ps.tasks = append(ps.tasks, parsedTask{id, c[1], c[2], splitRefs(c[3])})
+					ps.tasks = append(ps.tasks, parsedTask{id: id, status: c[1], text: c[2], cites: splitRefs(c[3])})
 				}
 			}
 		}
