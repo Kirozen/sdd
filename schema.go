@@ -10,8 +10,9 @@ import (
 // v2 adds the global project scope (project table + project_id) and per-project
 // display ordinals (ord). v3 adds the unknown table (parked grill questions).
 // v4 adds the test table (invariant ↔ proving test, V42). v5 adds the gate
-// table (durable per-feature review verdict, V46).
-const userVersion = 5
+// table (durable per-feature review verdict, V46). v6 indexes every uncovered
+// foreign-key child column (V58).
+const userVersion = 6
 
 // schemaFS embeds the DDL that is the SINGLE source for both the runtime migrator
 // (applySchema/migrate, below) and sqlc codegen (V51): sqlc reads these same
@@ -44,6 +45,7 @@ var (
 	unknownDDL = mustDDL("002_unknown.sql")
 	testDDL    = mustDDL("003_test.sql")
 	gateDDL    = mustDDL("004_gate.sql")
+	indexDDL   = mustDDL("005_indexes.sql")
 )
 
 // migrations maps each schema version > 2 to its additive DDL step. The same
@@ -54,6 +56,7 @@ var migrations = map[int]string{
 	3: unknownDDL,
 	4: testDDL,
 	5: gateDDL,
+	6: indexDDL,
 }
 
 // applySchema creates all tables and stamps user_version (V9 migration anchor).
