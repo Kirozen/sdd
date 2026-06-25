@@ -1,0 +1,14 @@
+{
+  "name": "sdd",
+  "version": "0.1.0",
+  "description": "Spec-driven dev backed by SQLite. The spec lives in a database; SPEC.md is a generated read-only view. Full loop (grill -> spec -> research -> review -> build -> backprop -> deepen) driven by the sdd CLI, auto-provisioned at session start.",
+  "author": { "name": "Kirozen" },
+  "keywords": [
+    "spec-driven",
+    "sdd",
+    "sqlite",
+    "adversarial-review",
+    "backprop",
+    "invariants"
+  ]
+}
