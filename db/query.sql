@@ -220,6 +220,12 @@ SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
 WHERE f.project_id = ? ORDER BY t.ord;
 
+-- name: PendingTasks :many
+SELECT f.ord AS feature_ord, f.name AS feature_name, t.id, t.ord, t.status, t.text
+FROM task t JOIN feature f ON f.id = t.feature_id
+WHERE f.project_id = ? AND t.status != 'x'
+ORDER BY f.ord, t.ord;
+
 -- name: TasksInProjectByStatus :many
 SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id

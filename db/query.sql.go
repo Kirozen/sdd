@@ -1099,6 +1099,52 @@ func (q *Queries) OpenUnknownFeatures(ctx context.Context, projectID int64) ([]O
 	return items, nil
 }
 
+const pendingTasks = `-- name: PendingTasks :many
+SELECT f.ord AS feature_ord, f.name AS feature_name, t.id, t.ord, t.status, t.text
+FROM task t JOIN feature f ON f.id = t.feature_id
+WHERE f.project_id = ? AND t.status != 'x'
+ORDER BY f.ord, t.ord
+`
+
+type PendingTasksRow struct {
+	FeatureOrd  int64
+	FeatureName string
+	ID          int64
+	Ord         int64
+	Status      string
+	Text        string
+}
+
+func (q *Queries) PendingTasks(ctx context.Context, projectID int64) ([]PendingTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, pendingTasks, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PendingTasksRow{}
+	for rows.Next() {
+		var i PendingTasksRow
+		if err := rows.Scan(
+			&i.FeatureOrd,
+			&i.FeatureName,
+			&i.ID,
+			&i.Ord,
+			&i.Status,
+			&i.Text,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const projectByPath = `-- name: ProjectByPath :one
 SELECT id FROM project WHERE path = ?
 `
