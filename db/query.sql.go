@@ -420,6 +420,46 @@ func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (int64, erro
 	return result.RowsAffected()
 }
 
+const featureByOrd = `-- name: FeatureByOrd :many
+SELECT id, ord, name FROM feature WHERE project_id = ? AND ord = ? ORDER BY ord
+`
+
+type FeatureByOrdParams struct {
+	ProjectID int64
+	Ord       int64
+}
+
+type FeatureByOrdRow struct {
+	ID   int64
+	Ord  int64
+	Name string
+}
+
+// Single feature by (project_id, ord); :many so an unknown ord yields zero rows
+// (cat maps empty -> exit!=0, V75) rather than sql.ErrNoRows.
+func (q *Queries) FeatureByOrd(ctx context.Context, arg FeatureByOrdParams) ([]FeatureByOrdRow, error) {
+	rows, err := q.db.QueryContext(ctx, featureByOrd, arg.ProjectID, arg.Ord)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FeatureByOrdRow{}
+	for rows.Next() {
+		var i FeatureByOrdRow
+		if err := rows.Scan(&i.ID, &i.Ord, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const featureGoalConstraintCount = `-- name: FeatureGoalConstraintCount :one
 SELECT CAST(
 	(SELECT count(*) FROM goal WHERE goal.feature_id = ?)
@@ -1059,6 +1099,45 @@ func (q *Queries) NextUnknownOrd(ctx context.Context, projectID int64) (int64, e
 	var next_ord int64
 	err := row.Scan(&next_ord)
 	return next_ord, err
+}
+
+const openFeaturesByProject = `-- name: OpenFeaturesByProject :many
+SELECT id, ord, name FROM feature f
+WHERE f.project_id = ?
+  AND ( EXISTS (SELECT 1 FROM task t WHERE t.feature_id = f.id AND t.status != 'x')
+        OR NOT EXISTS (SELECT 1 FROM task t WHERE t.feature_id = f.id) )
+ORDER BY f.ord
+`
+
+type OpenFeaturesByProjectRow struct {
+	ID   int64
+	Ord  int64
+	Name string
+}
+
+// Unfinished features = NOT in the built stage (V32): has a non-x task OR zero
+// tasks; a grilled/specced-but-untasked feature stays visible (V75).
+func (q *Queries) OpenFeaturesByProject(ctx context.Context, projectID int64) ([]OpenFeaturesByProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, openFeaturesByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OpenFeaturesByProjectRow{}
+	for rows.Next() {
+		var i OpenFeaturesByProjectRow
+		if err := rows.Scan(&i.ID, &i.Ord, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const openUnknownFeatures = `-- name: OpenUnknownFeatures :many

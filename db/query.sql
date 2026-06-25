@@ -196,6 +196,20 @@ SELECT id, ord, date, cause FROM bug WHERE project_id = ? ORDER BY ord;
 -- name: FeaturesByProject :many
 SELECT id, ord, name FROM feature WHERE project_id = ? ORDER BY ord;
 
+-- name: OpenFeaturesByProject :many
+-- Unfinished features = NOT in the built stage (V32): has a non-x task OR zero
+-- tasks; a grilled/specced-but-untasked feature stays visible (V75).
+SELECT id, ord, name FROM feature f
+WHERE f.project_id = ?
+  AND ( EXISTS (SELECT 1 FROM task t WHERE t.feature_id = f.id AND t.status != 'x')
+        OR NOT EXISTS (SELECT 1 FROM task t WHERE t.feature_id = f.id) )
+ORDER BY f.ord;
+
+-- name: FeatureByOrd :many
+-- Single feature by (project_id, ord); :many so an unknown ord yields zero rows
+-- (cat maps empty -> exit!=0, V75) rather than sql.ErrNoRows.
+SELECT id, ord, name FROM feature WHERE project_id = ? AND ord = ? ORDER BY ord;
+
 -- name: TasksByFeature :many
 SELECT id, ord, status, text FROM task WHERE feature_id = ? ORDER BY ord;
 

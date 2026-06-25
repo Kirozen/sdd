@@ -52,19 +52,58 @@ func fmtUnknownLine(ord int, status, text string) string {
 	return fmt.Sprintf("U%d|%s|%s", ord, status, esc(text))
 }
 
-// renderSpec renders one project's slice of the db to SPEC.md text. Pure
-// function of (db, project) state: every query filters by project_id (V20),
-// orders by the per-project ordinal, and emits nothing volatile (V1, V7).
+// featureRow is the common shape the feature renderers need (V26 ordinal +
+// name + PK for child lookups). sqlc emits a distinct row type per query even
+// when columns match, so every selector maps into this one struct.
+type featureRow struct {
+	ID   int64
+	Ord  int64
+	Name string
+}
+
+// featureSel picks which features a render emits; durables are never scoped
+// (V76). allFeatures is the full set used by export AND check (V77).
+type featureSel func(*sql.DB, int64) ([]featureRow, error)
+
+func allFeatures(db *sql.DB, projectID int64) ([]featureRow, error) {
+	rows, err := dbq.New(db).FeaturesByProject(context.Background(), projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]featureRow, len(rows))
+	for i, r := range rows {
+		out[i] = featureRow{ID: r.ID, Ord: r.Ord, Name: r.Name}
+	}
+	return out, nil
+}
+
+// renderSpec renders the FULL spec (all features) to SPEC.md text. Both
+// exportSpec and checkSpec call it, so the whole-file render IS the V6 drift
+// contract (V77); the scoped path (sdd cat) goes through renderSpecScoped.
 func renderSpec(db *sql.DB, projectID int64) (string, error) {
+	return renderSpecScoped(db, projectID, allFeatures)
+}
+
+// renderSpecScoped renders durables in full (V76) plus the features sel picks.
+// Pure function of (db, project, sel): every query filters by project_id (V20),
+// orders by the per-project ordinal, and emits nothing volatile (V1, V7).
+func renderSpecScoped(db *sql.DB, projectID int64, sel featureSel) (string, error) {
 	var b strings.Builder
 	b.WriteString(generatedHead + "\n# SPEC\n")
 
 	for _, render := range []func(*sql.DB, int64, *strings.Builder) error{
-		renderInterfaces, renderResearch, renderInvariants, renderBugs, renderFeatures,
+		renderInterfaces, renderResearch, renderInvariants, renderBugs,
 	} {
 		if err := render(db, projectID, &b); err != nil {
 			return "", err
 		}
+	}
+	feats, err := sel(db, projectID)
+	if err != nil {
+		return "", err
+	}
+	if err := renderFeatures(db, feats, &b); err != nil {
+		return "", err
 	}
 	return b.String(), nil
 }
@@ -137,11 +176,7 @@ func bugFix(db *sql.DB, bugPK int64) (string, error) {
 	return strings.Join(parts, ","), nil
 }
 
-func renderFeatures(db *sql.DB, projectID int64, b *strings.Builder) error {
-	feats, err := dbq.New(db).FeaturesByProject(context.Background(), projectID)
-	if err != nil {
-		return err
-	}
+func renderFeatures(db *sql.DB, feats []featureRow, b *strings.Builder) error {
 	for _, f := range feats {
 		fmt.Fprintf(b, "\n## FEATURE %d: %s\n", int(f.Ord), f.Name)
 		if err := renderGoals(db, b, f.ID); err != nil {
