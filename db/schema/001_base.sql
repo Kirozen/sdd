@@ -3,7 +3,7 @@
 -- persists across features, an ephemeral feature layer wiped via feature cascade
 -- (V4), and typed join tables carrying real foreign keys (V5). project_id (V20)
 -- scopes durable rows + features; ord (V26) is the per-(project,kind) display/cite
--- ordinal. Pure DDL — no PRAGMA, no data (sqlc parses this; V52 keeps migration
+-- ordinal. Pure DDL - no PRAGMA, no data (sqlc parses this; V52 keeps migration
 -- a runtime concern).
 
 -- global project scope: every durable row + feature belongs to one project (V20).

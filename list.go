@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
+	dbq "github.com/kirozen/sdd/db"
 	"github.com/spf13/cobra"
 )
 
@@ -12,42 +14,49 @@ import (
 // helpers as renderSpec (V18). Read-pure (V16); scoped by project (V20). An
 // unknown kind errors (V17); a valid-but-empty kind returns no lines.
 func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
+	ctx := context.Background()
+	q := dbq.New(db)
 	switch kind {
 	case "invariant":
-		return listRows(db, `SELECT ord, text FROM invariant WHERE project_id=? ORDER BY ord`, projectID, func(rows *sql.Rows) (string, error) {
-			var ord int
-			var text string
-			if err := rows.Scan(&ord, &text); err != nil {
-				return "", err
-			}
-			return fmtInvariantLine(ord, text), nil
-		})
+		rows, err := q.InvariantsByProject(ctx, nz(projectID))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, fmtInvariantLine(int(r.Ord.Int64), r.Text))
+		}
+		return out, nil
 	case "interface":
-		return listRows(db, `SELECT kind, name, sig, status FROM interface WHERE project_id=? ORDER BY id`, projectID, func(rows *sql.Rows) (string, error) {
-			var k, name, sig, status string
-			if err := rows.Scan(&k, &name, &sig, &status); err != nil {
-				return "", err
-			}
-			return fmtInterfaceLine(k, name, sig, status), nil
-		})
+		rows, err := q.InterfacesByProject(ctx, nz(projectID))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, fmtInterfaceLine(r.Kind, r.Name, r.Sig, r.Status))
+		}
+		return out, nil
 	case "research":
-		return listRows(db, `SELECT ord, topic, finding, src FROM research WHERE project_id=? ORDER BY ord`, projectID, func(rows *sql.Rows) (string, error) {
-			var ord int
-			var topic, finding, src string
-			if err := rows.Scan(&ord, &topic, &finding, &src); err != nil {
-				return "", err
-			}
-			return fmtResearchLine(ord, topic, finding, src), nil
-		})
+		rows, err := q.ResearchByProject(ctx, nz(projectID))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, fmtResearchLine(int(r.Ord.Int64), r.Topic, r.Finding, r.Src))
+		}
+		return out, nil
 	case "feature":
-		return listRows(db, `SELECT ord, name FROM feature WHERE project_id=? ORDER BY ord`, projectID, func(rows *sql.Rows) (string, error) {
-			var ord int
-			var name string
-			if err := rows.Scan(&ord, &name); err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("FEATURE %d: %s", ord, name), nil
-		})
+		rows, err := q.FeaturesByProject(ctx, nz(projectID))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, fmt.Sprintf("FEATURE %d: %s", int(r.Ord.Int64), r.Name))
+		}
+		return out, nil
 	case "task":
 		return listTasks(db, projectID)
 	case "bug":
@@ -56,14 +65,15 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 		// Feature-scoped, all statuses (open + resolved), per-project ordinal U<n>.
 		// Not part of listAllKinds, so `list` (no kind) omits it (V28); only an
 		// explicit `list unknown` surfaces them.
-		return listRows(db, `SELECT u.ord, u.status, u.text FROM unknown u JOIN feature f ON f.id=u.feature_id WHERE f.project_id=? ORDER BY u.ord`, projectID, func(rows *sql.Rows) (string, error) {
-			var ord int
-			var status, text string
-			if err := rows.Scan(&ord, &status, &text); err != nil {
-				return "", err
-			}
-			return fmtUnknownLine(ord, status, text), nil
-		})
+		rows, err := q.UnknownsByProject(ctx, nz(projectID))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, fmtUnknownLine(int(r.Ord.Int64), r.Status, r.Text))
+		}
+		return out, nil
 	default:
 		return nil, fmt.Errorf("unknown kind %q (want invariant|interface|task|bug|research|feature|unknown)", kind)
 	}
@@ -163,107 +173,64 @@ func listPretty(db *sql.DB, projectID int64) ([]string, error) {
 }
 
 func prettyInterfaces(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT kind, name, sig, status FROM interface WHERE project_id=? ORDER BY id`, projectID)
+	rows, err := dbq.New(db).InterfacesByProject(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var refs, bodies []string
-	for rows.Next() {
-		var kind, name, sig, status string
-		if err := rows.Scan(&kind, &name, &sig, &status); err != nil {
-			return nil, err
-		}
+	for _, r := range rows {
 		mark := ""
-		if status == "deprecated" {
+		if r.Status == "deprecated" {
 			mark = " [deprecated]"
 		}
-		refs = append(refs, "I."+name)
-		bodies = append(bodies, fmt.Sprintf("(%s) %s%s", kind, sig, mark))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		refs = append(refs, "I."+r.Name)
+		bodies = append(bodies, fmt.Sprintf("(%s) %s%s", r.Kind, r.Sig, mark))
 	}
 	return alignRows(refs, bodies), nil
 }
 
 func prettyResearch(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT ord, topic, finding, src FROM research WHERE project_id=? ORDER BY ord`, projectID)
+	rows, err := dbq.New(db).ResearchByProject(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var refs, bodies []string
-	for rows.Next() {
-		var ord int
-		var topic, finding, src string
-		if err := rows.Scan(&ord, &topic, &finding, &src); err != nil {
-			return nil, err
-		}
-		refs = append(refs, fmt.Sprintf("R%d", ord))
-		bodies = append(bodies, fmt.Sprintf("%s — %s  (%s)", topic, finding, src))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	for _, r := range rows {
+		refs = append(refs, fmt.Sprintf("R%d", int(r.Ord.Int64)))
+		bodies = append(bodies, fmt.Sprintf("%s — %s  (%s)", r.Topic, r.Finding, r.Src))
 	}
 	return alignRows(refs, bodies), nil
 }
 
 func prettyInvariants(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT ord, text FROM invariant WHERE project_id=? ORDER BY ord`, projectID)
+	rows, err := dbq.New(db).InvariantsByProject(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var refs, bodies []string
-	for rows.Next() {
-		var ord int
-		var text string
-		if err := rows.Scan(&ord, &text); err != nil {
-			return nil, err
-		}
-		refs = append(refs, fmt.Sprintf("V%d", ord))
-		bodies = append(bodies, text)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	for _, r := range rows {
+		refs = append(refs, fmt.Sprintf("V%d", int(r.Ord.Int64)))
+		bodies = append(bodies, r.Text)
 	}
 	return alignRows(refs, bodies), nil
 }
 
 func prettyBugs(db *sql.DB, projectID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT id, ord, date, cause FROM bug WHERE project_id=? ORDER BY ord`, projectID)
+	rows, err := dbq.New(db).BugsByProject(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	type bg struct {
-		pk          int64
-		ord         int
-		date, cause string
-	}
-	var bugs []bg
-	for rows.Next() {
-		var b bg
-		if err := rows.Scan(&b.pk, &b.ord, &b.date, &b.cause); err != nil {
-			return nil, err
-		}
-		bugs = append(bugs, b)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 	var refs, bodies []string
-	for _, b := range bugs {
-		fix, err := bugFix(db, b.pk)
+	for _, b := range rows {
+		fix, err := bugFix(db, b.ID)
 		if err != nil {
 			return nil, err
 		}
-		body := fmt.Sprintf("%s  %s", b.date, b.cause)
+		body := fmt.Sprintf("%s  %s", b.Date, b.Cause)
 		if fix != "-" {
 			body += "  → fixed " + fix
 		}
-		refs = append(refs, fmt.Sprintf("B%d", b.ord))
+		refs = append(refs, fmt.Sprintf("B%d", int(b.Ord.Int64)))
 		bodies = append(bodies, body)
 	}
 	return alignRows(refs, bodies), nil
@@ -276,37 +243,18 @@ type prettyFeature struct {
 }
 
 func prettyFeatures(db *sql.DB, projectID int64) ([]prettyFeature, error) {
-	rows, err := db.Query(`SELECT id, ord, name FROM feature WHERE project_id=? ORDER BY ord`, projectID)
+	feats, err := dbq.New(db).FeaturesByProject(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	type feat struct {
-		pk   int64
-		ord  int
-		name string
-	}
-	var feats []feat
-	for rows.Next() {
-		var f feat
-		if err := rows.Scan(&f.pk, &f.ord, &f.name); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		feats = append(feats, f)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
 	var out []prettyFeature
 	for _, f := range feats {
-		tasks, err := prettyTasks(db, f.pk)
+		tasks, err := prettyTasks(db, f.ID)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, prettyFeature{
-			header: fmt.Sprintf("FEATURE %d — %s", f.ord, f.name),
+			header: fmt.Sprintf("FEATURE %d — %s", int(f.Ord.Int64), f.Name),
 			tasks:  tasks,
 		})
 	}
@@ -314,39 +262,21 @@ func prettyFeatures(db *sql.DB, projectID int64) ([]prettyFeature, error) {
 }
 
 func prettyTasks(db *sql.DB, featurePK int64) ([]string, error) {
-	rows, err := db.Query(`SELECT id, ord, status, text FROM task WHERE feature_id=? ORDER BY ord`, featurePK)
+	tasks, err := dbq.New(db).TasksByFeature(context.Background(), featurePK)
 	if err != nil {
-		return nil, err
-	}
-	type tk struct {
-		pk           int64
-		ord          int
-		status, text string
-	}
-	var tasks []tk
-	for rows.Next() {
-		var t tk
-		if err := rows.Scan(&t.pk, &t.ord, &t.status, &t.text); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		tasks = append(tasks, t)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	var refs, bodies []string
 	for _, t := range tasks {
-		cites, err := taskCites(db, t.pk)
+		cites, err := taskCites(db, t.ID)
 		if err != nil {
 			return nil, err
 		}
-		body := fmt.Sprintf("%s  %s", statusGlyph(t.status), t.text)
+		body := fmt.Sprintf("%s  %s", statusGlyph(t.Status), t.Text)
 		if cites != "-" {
 			body += "  → " + cites
 		}
-		refs = append(refs, fmt.Sprintf("T%d", t.ord))
+		refs = append(refs, fmt.Sprintf("T%d", int(t.Ord.Int64)))
 		bodies = append(bodies, body)
 	}
 	return alignRows(refs, bodies), nil
@@ -362,72 +292,79 @@ func alignRows(refs, bodies []string) []string {
 	return lines
 }
 
-// listRows runs query (scoped to projectID) and maps each row to a line via fn.
-func listRows(db *sql.DB, query string, projectID int64, fn func(*sql.Rows) (string, error)) ([]string, error) {
-	rows, err := db.Query(query, projectID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		line, err := fn(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, line)
-	}
-	return out, rows.Err()
+// task is a feature's task as the list/pretty paths consume it, decoupled from
+// the per-query generated row types (which all carry the same four fields).
+type taskRow struct {
+	pk           int64
+	ord          int
+	status, text string
 }
 
-// listTasks and listBugs need a second query per row (cites / fix), so they
-// drain the cursor before re-joining.
 func listTasks(db *sql.DB, projectID int64) ([]string, error) {
 	return listTasksFiltered(db, projectID, "", 0)
 }
 
 // listTasksFiltered lists a project's tasks, optionally narrowed by status
 // (V38: "" = any, else exactly one of .|~|x) and feature ordinal (0 = any, else
-// the feature must exist or it errors). Lines render through fmtTaskLine (V18).
+// the feature must exist or it errors). The feature is resolved to its PK first
+// so a missing one errors (V38/V53) rather than silently returning empty; the
+// four generated queries cover the filter combinations. Lines render through
+// fmtTaskLine (V18).
 func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd int64) ([]string, error) {
-	q := `SELECT t.id, t.ord, t.status, t.text FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=?`
-	qargs := []any{projectID}
+	ctx := context.Background()
+	q := dbq.New(db)
+
+	var featPK int64
 	if featureOrd > 0 {
 		pk, err := featurePK(db, projectID, featureOrd) // missing feature → error (V38)
 		if err != nil {
 			return nil, err
 		}
-		q += ` AND t.feature_id=?`
-		qargs = append(qargs, pk)
+		featPK = pk
 	}
-	if status != "" {
-		q += ` AND t.status=?`
-		qargs = append(qargs, status)
-	}
-	q += ` ORDER BY t.ord`
 
-	type tk struct {
-		pk           int64
-		ord          int
-		status, text string
-	}
-	var tasks []tk
-	rows, err := db.Query(q, qargs...)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var t tk
-		if err := rows.Scan(&t.pk, &t.ord, &t.status, &t.text); err != nil {
-			rows.Close()
+	var tasks []taskRow
+	switch {
+	case featureOrd > 0 && status != "":
+		rows, err := q.TasksInProjectByFeatureStatus(ctx, dbq.TasksInProjectByFeatureStatusParams{
+			ProjectID: nz(projectID), FeatureID: featPK, Status: status,
+		})
+		if err != nil {
 			return nil, err
 		}
-		tasks = append(tasks, t)
+		for _, r := range rows {
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+		}
+	case featureOrd > 0:
+		rows, err := q.TasksInProjectByFeature(ctx, dbq.TasksInProjectByFeatureParams{
+			ProjectID: nz(projectID), FeatureID: featPK,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+		}
+	case status != "":
+		rows, err := q.TasksInProjectByStatus(ctx, dbq.TasksInProjectByStatusParams{
+			ProjectID: nz(projectID), Status: status,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+		}
+	default:
+		rows, err := q.TasksInProject(ctx, nz(projectID))
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			tasks = append(tasks, taskRow{r.ID, int(r.Ord.Int64), r.Status, r.Text})
+		}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+
 	var out []string
 	for _, t := range tasks {
 		cites, err := taskCites(db, t.pk)
@@ -440,35 +377,17 @@ func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd in
 }
 
 func listBugs(db *sql.DB, projectID int64) ([]string, error) {
-	type bg struct {
-		pk          int64
-		ord         int
-		date, cause string
-	}
-	var bugs []bg
-	rows, err := db.Query(`SELECT id, ord, date, cause FROM bug WHERE project_id=? ORDER BY ord`, projectID)
+	rows, err := dbq.New(db).BugsByProject(context.Background(), nz(projectID))
 	if err != nil {
 		return nil, err
 	}
-	for rows.Next() {
-		var b bg
-		if err := rows.Scan(&b.pk, &b.ord, &b.date, &b.cause); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		bugs = append(bugs, b)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
 	var out []string
-	for _, b := range bugs {
-		fix, err := bugFix(db, b.pk)
+	for _, b := range rows {
+		fix, err := bugFix(db, b.ID)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fmtBugLine(b.ord, b.date, b.cause, fix))
+		out = append(out, fmtBugLine(int(b.Ord.Int64), b.Date, b.Cause, fix))
 	}
 	return out, nil
 }

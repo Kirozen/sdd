@@ -11,9 +11,7 @@ import (
 )
 
 const backfillProjectURL = `-- name: BackfillProjectURL :exec
-?;
-
-UPDATE project SET url = ? WHERE id = ? AND url IS NU
+UPDATE project SET url = ? WHERE id = ? AND url IS NULL
 `
 
 type BackfillProjectURLParams struct {
@@ -27,9 +25,7 @@ func (q *Queries) BackfillProjectURL(ctx context.Context, arg BackfillProjectURL
 }
 
 const bugCitersOfInv = `-- name: BugCitersOfInv :many
-Y t.ord;
-
-SELECT b.ord FROM bug_fix j JOIN bug b ON b.id = j.bug_id WHERE j.inv_id = ? ORDER
+SELECT b.ord FROM bug_fix j JOIN bug b ON b.id = j.bug_id WHERE j.inv_id = ? ORDER BY b.ord
 `
 
 func (q *Queries) BugCitersOfInv(ctx context.Context, invID int64) ([]sql.NullInt64, error) {
@@ -56,10 +52,8 @@ func (q *Queries) BugCitersOfInv(ctx context.Context, invID int64) ([]sql.NullIn
 }
 
 const bugFixInvOrds = `-- name: BugFixInvOrds :many
-Y t.ord;
 
-
-SELECT i.ord FROM bug_fix j JOIN invariant i ON i.id = j.inv_id WHERE j.bug_id = ? ORDER
+SELECT i.ord FROM bug_fix j JOIN invariant i ON i.id = j.inv_id WHERE j.bug_id = ? ORDER BY i.ord
 `
 
 // ============================================================ reads: cite resolution (export.go / next.go)
@@ -87,9 +81,7 @@ func (q *Queries) BugFixInvOrds(ctx context.Context, bugID int64) ([]sql.NullInt
 }
 
 const bugsByProject = `-- name: BugsByProject :many
-BY ord;
-
-SELECT id, ord, date, cause FROM bug WHERE project_id = ? ORDE
+SELECT id, ord, date, cause FROM bug WHERE project_id = ? ORDER BY ord
 `
 
 type BugsByProjectRow struct {
@@ -128,10 +120,8 @@ func (q *Queries) BugsByProject(ctx context.Context, projectID sql.NullInt64) ([
 }
 
 const citersOfIface = `-- name: CitersOfIface :many
-ord = ?;
 
-
-SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id = j.task_id WHERE j.iface_id = ? ORDER
+SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id = j.task_id WHERE j.iface_id = ? ORDER BY t.ord
 `
 
 // ============================================================ reads: refs (refs.go)
@@ -159,9 +149,7 @@ func (q *Queries) CitersOfIface(ctx context.Context, ifaceID int64) ([]sql.NullI
 }
 
 const constraintsByFeature = `-- name: ConstraintsByFeature :many
-R BY id;
-
-SELECT text FROM "constraint" WHERE feature_id = ? ORD
+SELECT text FROM "constraint" WHERE feature_id = ? ORDER BY id
 `
 
 func (q *Queries) ConstraintsByFeature(ctx context.Context, featureID int64) ([]string, error) {
@@ -188,9 +176,7 @@ func (q *Queries) ConstraintsByFeature(ctx context.Context, featureID int64) ([]
 }
 
 const createProject = `-- name: CreateProject :execlastid
-L;
-
-INSERT INTO project(url, path) VALUES(?
+INSERT INTO project(url, path) VALUES(?, ?)
 `
 
 type CreateProjectParams struct {
@@ -198,7 +184,7 @@ type CreateProjectParams struct {
 	Path string
 }
 
-// url is the nullable column, so sqlc types this param sql.NullString — pass an
+// url is the nullable column, so sqlc types this param sql.NullString - pass an
 // unset NullString for a project first seen without an origin.
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createProject, arg.Url, arg.Path)
@@ -209,9 +195,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (i
 }
 
 const deleteProjectBugs = `-- name: DeleteProjectBugs :exec
-_id = ?;
-
-DELETE FROM bug WHERE projec
+DELETE FROM bug WHERE project_id = ?
 `
 
 func (q *Queries) DeleteProjectBugs(ctx context.Context, projectID sql.NullInt64) error {
@@ -220,9 +204,7 @@ func (q *Queries) DeleteProjectBugs(ctx context.Context, projectID sql.NullInt64
 }
 
 const deleteProjectFeatures = `-- name: DeleteProjectFeatures :exec
-R) AS n;
-
-DELETE FROM feature WHERE projec
+DELETE FROM feature WHERE project_id = ?
 `
 
 func (q *Queries) DeleteProjectFeatures(ctx context.Context, projectID sql.NullInt64) error {
@@ -231,9 +213,7 @@ func (q *Queries) DeleteProjectFeatures(ctx context.Context, projectID sql.NullI
 }
 
 const deleteProjectInterfaces = `-- name: DeleteProjectInterfaces :exec
-_id = ?;
-
-DELETE FROM interface WHERE projec
+DELETE FROM interface WHERE project_id = ?
 `
 
 func (q *Queries) DeleteProjectInterfaces(ctx context.Context, projectID sql.NullInt64) error {
@@ -242,9 +222,7 @@ func (q *Queries) DeleteProjectInterfaces(ctx context.Context, projectID sql.Nul
 }
 
 const deleteProjectInvariants = `-- name: DeleteProjectInvariants :exec
-_id = ?;
-
-DELETE FROM invariant WHERE projec
+DELETE FROM invariant WHERE project_id = ?
 `
 
 func (q *Queries) DeleteProjectInvariants(ctx context.Context, projectID sql.NullInt64) error {
@@ -253,9 +231,7 @@ func (q *Queries) DeleteProjectInvariants(ctx context.Context, projectID sql.Nul
 }
 
 const deleteProjectResearch = `-- name: DeleteProjectResearch :exec
-_id = ?;
-
-DELETE FROM research WHERE projec
+DELETE FROM research WHERE project_id = ?
 `
 
 func (q *Queries) DeleteProjectResearch(ctx context.Context, projectID sql.NullInt64) error {
@@ -264,9 +240,7 @@ func (q *Queries) DeleteProjectResearch(ctx context.Context, projectID sql.NullI
 }
 
 const deprecateInterface = `-- name: DeprecateInterface :execrows
-= ?;
-
-UPDATE interface SET status = 'deprecated' WHERE project_id = ? AND name
+UPDATE interface SET status = 'deprecated' WHERE project_id = ? AND name = ?
 `
 
 type DeprecateInterfaceParams struct {
@@ -283,15 +257,13 @@ func (q *Queries) DeprecateInterface(ctx context.Context, arg DeprecateInterface
 }
 
 const deprecatedCiteWarnings = `-- name: DeprecatedCiteWarnings :many
-R) AS n;
-
 SELECT t.ord, i.name
 FROM task_cites_iface j
 JOIN interface i ON i.id = j.iface_id
 JOIN task t ON t.id = j.task_id
 JOIN feature f ON f.id = t.feature_id
 WHERE f.project_id = ? AND i.status = 'deprecated'
-ORDER BY t.ord
+ORDER BY t.ord, i.name
 `
 
 type DeprecatedCiteWarningsRow struct {
@@ -323,9 +295,7 @@ func (q *Queries) DeprecatedCiteWarnings(ctx context.Context, projectID sql.Null
 }
 
 const editBug = `-- name: EditBug :execrows
-= ?;
-
-UPDATE bug SET cause = ? WHERE project_id = ? AND ord
+UPDATE bug SET cause = ? WHERE project_id = ? AND ord = ?
 `
 
 type EditBugParams struct {
@@ -343,9 +313,7 @@ func (q *Queries) EditBug(ctx context.Context, arg EditBugParams) (int64, error)
 }
 
 const editConstraint = `-- name: EditConstraint :execrows
-= ?;
-
-UPDATE "constraint" SET text = ? WHERE id
+UPDATE "constraint" SET text = ? WHERE id = ?
 `
 
 type EditConstraintParams struct {
@@ -362,9 +330,7 @@ func (q *Queries) EditConstraint(ctx context.Context, arg EditConstraintParams) 
 }
 
 const editGoal = `-- name: EditGoal :execrows
-= ?;
-
-UPDATE goal SET text = ? WHERE id
+UPDATE goal SET text = ? WHERE id = ?
 `
 
 type EditGoalParams struct {
@@ -381,9 +347,7 @@ func (q *Queries) EditGoal(ctx context.Context, arg EditGoalParams) (int64, erro
 }
 
 const editInterfaceSig = `-- name: EditInterfaceSig :execrows
-?);
-
-UPDATE interface SET sig = ? WHERE project_id = ? AND name
+UPDATE interface SET sig = ? WHERE project_id = ? AND name = ?
 `
 
 type EditInterfaceSigParams struct {
@@ -401,10 +365,8 @@ func (q *Queries) EditInterfaceSig(ctx context.Context, arg EditInterfaceSigPara
 }
 
 const editInvariant = `-- name: EditInvariant :execrows
-_at;
 
-
-UPDATE invariant SET text = ? WHERE project_id = ? AND ord
+UPDATE invariant SET text = ? WHERE project_id = ? AND ord = ?
 `
 
 type EditInvariantParams struct {
@@ -423,9 +385,7 @@ func (q *Queries) EditInvariant(ctx context.Context, arg EditInvariantParams) (i
 }
 
 const editResearch = `-- name: EditResearch :execrows
-= ?;
-
-UPDATE research SET finding = ? WHERE project_id = ? AND ord
+UPDATE research SET finding = ? WHERE project_id = ? AND ord = ?
 `
 
 type EditResearchParams struct {
@@ -443,9 +403,7 @@ func (q *Queries) EditResearch(ctx context.Context, arg EditResearchParams) (int
 }
 
 const editTask = `-- name: EditTask :execrows
-= ?;
-
-UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id
+UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
 `
 
 type EditTaskParams struct {
@@ -463,12 +421,10 @@ func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (int64, erro
 }
 
 const featureGoalConstraintCount = `-- name: FeatureGoalConstraintCount :one
-_id = ?;
-
 SELECT CAST(
 	(SELECT count(*) FROM goal WHERE goal.feature_id = ?)
 	+ (SELECT count(*) FROM "constraint" WHERE "constraint".feature_id = ?)
-AS INTEG
+AS INTEGER) AS n
 `
 
 type FeatureGoalConstraintCountParams struct {
@@ -485,9 +441,7 @@ func (q *Queries) FeatureGoalConstraintCount(ctx context.Context, arg FeatureGoa
 }
 
 const featureOrdByID = `-- name: FeatureOrdByID :one
-= ?;
-
-SELECT ord FROM feature WHERE id
+SELECT ord FROM feature WHERE id = ?
 `
 
 func (q *Queries) FeatureOrdByID(ctx context.Context, id int64) (sql.NullInt64, error) {
@@ -498,9 +452,7 @@ func (q *Queries) FeatureOrdByID(ctx context.Context, id int64) (sql.NullInt64, 
 }
 
 const featurePK = `-- name: FeaturePK :one
-?);
-
-SELECT id FROM feature WHERE project_id = ? AND ord
+SELECT id FROM feature WHERE project_id = ? AND ord = ?
 `
 
 type FeaturePKParams struct {
@@ -516,13 +468,11 @@ func (q *Queries) FeaturePK(ctx context.Context, arg FeaturePKParams) (int64, er
 }
 
 const featureStageCounts = `-- name: FeatureStageCounts :one
-status;
-
 SELECT
 	CAST(count(*) AS INTEGER) AS total,
 	CAST(COALESCE(SUM(CASE WHEN status = 'x' THEN 1 ELSE 0 END), 0) AS INTEGER) AS done,
 	CAST(COALESCE(SUM(CASE WHEN status = '.' THEN 1 ELSE 0 END), 0) AS INTEGER) AS todo
-FROM task WHERE featur
+FROM task WHERE feature_id = ?
 `
 
 type FeatureStageCountsRow struct {
@@ -539,9 +489,7 @@ func (q *Queries) FeatureStageCounts(ctx context.Context, featureID int64) (Feat
 }
 
 const featuresByProject = `-- name: FeaturesByProject :many
-BY ord;
-
-SELECT id, ord, name FROM feature WHERE project_id = ? ORDE
+SELECT id, ord, name FROM feature WHERE project_id = ? ORDER BY ord
 `
 
 type FeaturesByProjectRow struct {
@@ -574,9 +522,7 @@ func (q *Queries) FeaturesByProject(ctx context.Context, projectID sql.NullInt64
 }
 
 const gateVerdict = `-- name: GateVerdict :one
-LIMIT 1;
-
-SELECT verdict FROM gate WHERE featur
+SELECT verdict FROM gate WHERE feature_id = ?
 `
 
 func (q *Queries) GateVerdict(ctx context.Context, featureID int64) (string, error) {
@@ -587,9 +533,7 @@ func (q *Queries) GateVerdict(ctx context.Context, featureID int64) (string, err
 }
 
 const goalsByFeature = `-- name: GoalsByFeature :many
-BY ord;
-
-SELECT text FROM goal WHERE feature_id = ? ORD
+SELECT text FROM goal WHERE feature_id = ? ORDER BY id
 `
 
 func (q *Queries) GoalsByFeature(ctx context.Context, featureID int64) ([]string, error) {
@@ -616,9 +560,7 @@ func (q *Queries) GoalsByFeature(ctx context.Context, featureID int64) ([]string
 }
 
 const insertBug = `-- name: InsertBug :execlastid
-?);
-
-INSERT INTO bug(project_id, ord, date, cause) VALUES(?, ?, ?
+INSERT INTO bug(project_id, ord, date, cause) VALUES(?, ?, ?, ?)
 `
 
 type InsertBugParams struct {
@@ -642,9 +584,7 @@ func (q *Queries) InsertBug(ctx context.Context, arg InsertBugParams) (int64, er
 }
 
 const insertBugFix = `-- name: InsertBugFix :exec
-?);
-
-INSERT INTO bug_fix(bug_id, inv_id) VALUES(?
+INSERT INTO bug_fix(bug_id, inv_id) VALUES(?, ?)
 `
 
 type InsertBugFixParams struct {
@@ -658,9 +598,7 @@ func (q *Queries) InsertBugFix(ctx context.Context, arg InsertBugFixParams) erro
 }
 
 const insertConstraint = `-- name: InsertConstraint :exec
-?);
-
-INSERT INTO "constraint"(feature_id, text) VALUES(?
+INSERT INTO "constraint"(feature_id, text) VALUES(?, ?)
 `
 
 type InsertConstraintParams struct {
@@ -674,10 +612,8 @@ func (q *Queries) InsertConstraint(ctx context.Context, arg InsertConstraintPara
 }
 
 const insertFeature = `-- name: InsertFeature :execlastid
-= ?;
 
-
-INSERT INTO feature(project_id, ord, name) VALUES(?, ?
+INSERT INTO feature(project_id, ord, name) VALUES(?, ?, ?)
 `
 
 type InsertFeatureParams struct {
@@ -696,9 +632,7 @@ func (q *Queries) InsertFeature(ctx context.Context, arg InsertFeatureParams) (i
 }
 
 const insertGoal = `-- name: InsertGoal :exec
-= ?;
-
-INSERT INTO goal(feature_id, text) VALUES(?
+INSERT INTO goal(feature_id, text) VALUES(?, ?)
 `
 
 type InsertGoalParams struct {
@@ -712,9 +646,7 @@ func (q *Queries) InsertGoal(ctx context.Context, arg InsertGoalParams) error {
 }
 
 const insertInterface = `-- name: InsertInterface :execlastid
-?);
-
-INSERT INTO interface(project_id, kind, name, sig) VALUES(?, ?, ?
+INSERT INTO interface(project_id, kind, name, sig) VALUES(?, ?, ?, ?)
 `
 
 type InsertInterfaceParams struct {
@@ -738,9 +670,7 @@ func (q *Queries) InsertInterface(ctx context.Context, arg InsertInterfaceParams
 }
 
 const insertInvariant = `-- name: InsertInvariant :exec
-?);
-
-INSERT INTO invariant(project_id, ord, text) VALUES(?, ?
+INSERT INTO invariant(project_id, ord, text) VALUES(?, ?, ?)
 `
 
 type InsertInvariantParams struct {
@@ -755,9 +685,7 @@ func (q *Queries) InsertInvariant(ctx context.Context, arg InsertInvariantParams
 }
 
 const insertResearch = `-- name: InsertResearch :exec
-?);
-
-INSERT INTO research(project_id, ord, topic, finding, src) VALUES(?, ?, ?, ?
+INSERT INTO research(project_id, ord, topic, finding, src) VALUES(?, ?, ?, ?, ?)
 `
 
 type InsertResearchParams struct {
@@ -780,9 +708,7 @@ func (q *Queries) InsertResearch(ctx context.Context, arg InsertResearchParams) 
 }
 
 const insertTask = `-- name: InsertTask :execlastid
-?);
-
-INSERT INTO task(feature_id, ord, text) VALUES(?, ?
+INSERT INTO task(feature_id, ord, text) VALUES(?, ?, ?)
 `
 
 type InsertTaskParams struct {
@@ -800,9 +726,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) (int64, 
 }
 
 const insertTaskCiteIface = `-- name: InsertTaskCiteIface :exec
-?);
-
-INSERT INTO task_cites_iface(task_id, iface_id) VALUES(?
+INSERT INTO task_cites_iface(task_id, iface_id) VALUES(?, ?)
 `
 
 type InsertTaskCiteIfaceParams struct {
@@ -816,9 +740,7 @@ func (q *Queries) InsertTaskCiteIface(ctx context.Context, arg InsertTaskCiteIfa
 }
 
 const insertTaskCiteInv = `-- name: InsertTaskCiteInv :exec
-?);
-
-INSERT INTO task_cites_inv(task_id, inv_id) VALUES(?
+INSERT INTO task_cites_inv(task_id, inv_id) VALUES(?, ?)
 `
 
 type InsertTaskCiteInvParams struct {
@@ -832,9 +754,7 @@ func (q *Queries) InsertTaskCiteInv(ctx context.Context, arg InsertTaskCiteInvPa
 }
 
 const insertTaskFull = `-- name: InsertTaskFull :execlastid
-?);
-
-INSERT INTO task(feature_id, ord, text, status) VALUES(?, ?, ?
+INSERT INTO task(feature_id, ord, text, status) VALUES(?, ?, ?, ?)
 `
 
 type InsertTaskFullParams struct {
@@ -858,10 +778,8 @@ func (q *Queries) InsertTaskFull(ctx context.Context, arg InsertTaskFullParams) 
 }
 
 const insertTest = `-- name: InsertTest :exec
-?);
-
 INSERT INTO test(invariant_id, name) VALUES(?, ?)
-ON CONFLICT(invariant_id, name) DO NOT
+ON CONFLICT(invariant_id, name) DO NOTHING
 `
 
 type InsertTestParams struct {
@@ -875,9 +793,7 @@ func (q *Queries) InsertTest(ctx context.Context, arg InsertTestParams) error {
 }
 
 const insertUnknown = `-- name: InsertUnknown :exec
-= ?;
-
-INSERT INTO unknown(feature_id, ord, text) VALUES(?, ?
+INSERT INTO unknown(feature_id, ord, text) VALUES(?, ?, ?)
 `
 
 type InsertUnknownParams struct {
@@ -892,9 +808,7 @@ func (q *Queries) InsertUnknown(ctx context.Context, arg InsertUnknownParams) er
 }
 
 const interfaceIDByName = `-- name: InterfaceIDByName :one
-= ?;
-
-SELECT id FROM interface WHERE project_id = ? AND name
+SELECT id FROM interface WHERE project_id = ? AND name = ?
 `
 
 type InterfaceIDByNameParams struct {
@@ -910,10 +824,8 @@ func (q *Queries) InterfaceIDByName(ctx context.Context, arg InterfaceIDByNamePa
 }
 
 const interfacesByProject = `-- name: InterfacesByProject :many
-_id = ?;
 
-
-SELECT kind, name, sig, status FROM interface WHERE project_id = ? ORD
+SELECT kind, name, sig, status FROM interface WHERE project_id = ? ORDER BY id
 `
 
 type InterfacesByProjectRow struct {
@@ -953,9 +865,7 @@ func (q *Queries) InterfacesByProject(ctx context.Context, projectID sql.NullInt
 }
 
 const invariantIDByOrd = `-- name: InvariantIDByOrd :one
-?);
-
-SELECT id FROM invariant WHERE project_id = ? AND ord
+SELECT id FROM invariant WHERE project_id = ? AND ord = ?
 `
 
 type InvariantIDByOrdParams struct {
@@ -971,9 +881,7 @@ func (q *Queries) InvariantIDByOrd(ctx context.Context, arg InvariantIDByOrdPara
 }
 
 const invariantsByProject = `-- name: InvariantsByProject :many
-BY ord;
-
-SELECT ord, text FROM invariant WHERE project_id = ? ORDE
+SELECT ord, text FROM invariant WHERE project_id = ? ORDER BY ord
 `
 
 type InvariantsByProjectRow struct {
@@ -1005,8 +913,6 @@ func (q *Queries) InvariantsByProject(ctx context.Context, projectID sql.NullInt
 }
 
 const nextActionableTask = `-- name: NextActionableTask :one
-Y f.ord;
-
 SELECT f.ord AS feat_ord, f.name AS feat_name, f.id AS feat_id,
        t.ord AS task_ord, t.status, t.text, t.id AS task_id
 FROM task t JOIN feature f ON f.id = t.feature_id
@@ -1014,6 +920,7 @@ WHERE f.project_id = ? AND t.status != 'x'
 ORDER BY f.ord ASC,
 	CASE t.status WHEN '~' THEN 0 ELSE 1 END ASC,
 	t.ord ASC
+LIMIT 1
 `
 
 type NextActionableTaskRow struct {
@@ -1042,9 +949,7 @@ func (q *Queries) NextActionableTask(ctx context.Context, projectID sql.NullInt6
 }
 
 const nextBugOrd = `-- name: NextBugOrd :one
-= ?;
-
-SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM bug WHERE project_id
+SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM bug WHERE project_id = ?
 `
 
 func (q *Queries) NextBugOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
@@ -1055,9 +960,7 @@ func (q *Queries) NextBugOrd(ctx context.Context, projectID sql.NullInt64) (int6
 }
 
 const nextFeatureOrd = `-- name: NextFeatureOrd :one
-= ?;
-
-SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM feature WHERE project_id
+SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM feature WHERE project_id = ?
 `
 
 func (q *Queries) NextFeatureOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
@@ -1068,10 +971,8 @@ func (q *Queries) NextFeatureOrd(ctx context.Context, projectID sql.NullInt64) (
 }
 
 const nextInvariantOrd = `-- name: NextInvariantOrd :one
-?);
 
-
-SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM invariant WHERE project_id
+SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM invariant WHERE project_id = ?
 `
 
 // ============================================================ ordinals (V26)
@@ -1084,9 +985,7 @@ func (q *Queries) NextInvariantOrd(ctx context.Context, projectID sql.NullInt64)
 }
 
 const nextResearchOrd = `-- name: NextResearchOrd :one
-= ?;
-
-SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM research WHERE project_id
+SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM research WHERE project_id = ?
 `
 
 func (q *Queries) NextResearchOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
@@ -1097,11 +996,9 @@ func (q *Queries) NextResearchOrd(ctx context.Context, projectID sql.NullInt64) 
 }
 
 const nextTaskOrd = `-- name: NextTaskOrd :one
-= ?;
-
 SELECT CAST(COALESCE(MAX(t.ord), 0) + 1 AS INTEGER) AS next_ord
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id
+WHERE f.project_id = ?
 `
 
 func (q *Queries) NextTaskOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
@@ -1112,11 +1009,9 @@ func (q *Queries) NextTaskOrd(ctx context.Context, projectID sql.NullInt64) (int
 }
 
 const nextUnknownOrd = `-- name: NextUnknownOrd :one
-= ?;
-
 SELECT CAST(COALESCE(MAX(u.ord), 0) + 1 AS INTEGER) AS next_ord
 FROM unknown u JOIN feature f ON f.id = u.feature_id
-WHERE f.project_id
+WHERE f.project_id = ?
 `
 
 func (q *Queries) NextUnknownOrd(ctx context.Context, projectID sql.NullInt64) (int64, error) {
@@ -1127,14 +1022,12 @@ func (q *Queries) NextUnknownOrd(ctx context.Context, projectID sql.NullInt64) (
 }
 
 const openUnknownFeatures = `-- name: OpenUnknownFeatures :many
-i.name;
-
 SELECT f.ord, f.name, CAST(count(*) AS INTEGER) AS n
 FROM unknown u
 JOIN feature f ON f.id = u.feature_id
 WHERE f.project_id = ? AND u.status = 'open'
 GROUP BY f.id
-ORDER
+ORDER BY f.ord
 `
 
 type OpenUnknownFeaturesRow struct {
@@ -1167,9 +1060,7 @@ func (q *Queries) OpenUnknownFeatures(ctx context.Context, projectID sql.NullInt
 }
 
 const projectByPath = `-- name: ProjectByPath :one
-?;
-
-SELECT id FROM project WHERE path =
+SELECT id FROM project WHERE path = ?
 `
 
 func (q *Queries) ProjectByPath(ctx context.Context, path string) (int64, error) {
@@ -1182,7 +1073,7 @@ func (q *Queries) ProjectByPath(ctx context.Context, path string) (int64, error)
 const projectByURL = `-- name: ProjectByURL :one
 
 
-SELECT id FROM project WHERE url =
+SELECT id FROM project WHERE url = ?
 `
 
 // F8 sqlc query layer (V50): every domain SQL statement that previously lived as
@@ -1190,7 +1081,7 @@ SELECT id FROM project WHERE url =
 // by `go tool sqlc generate`. Parameters use `?` (sqlc names them from the column)
 // except where a value is reused or nullable, which use sqlc.arg/sqlc.narg.
 // The only domain SQL that stays hand-written is backup.go's `.dump` (sqlite_master
-// introspection + dynamic SELECT */INSERT over arbitrary tables) — structurally
+// introspection + dynamic SELECT */INSERT over arbitrary tables) - structurally
 // inexpressible in sqlc (table/columns unknown at codegen); the documented V50
 // exception.
 // ============================================================ project (resolve.go)
@@ -1202,8 +1093,6 @@ func (q *Queries) ProjectByURL(ctx context.Context, url sql.NullString) (int64, 
 }
 
 const projectRowCount = `-- name: ProjectRowCount :one
-= ?;
-
 
 SELECT CAST(
 	(SELECT count(*) FROM invariant WHERE invariant.project_id = ?)
@@ -1211,7 +1100,7 @@ SELECT CAST(
 	+ (SELECT count(*) FROM bug       WHERE bug.project_id = ?)
 	+ (SELECT count(*) FROM research  WHERE research.project_id = ?)
 	+ (SELECT count(*) FROM feature   WHERE feature.project_id = ?)
-AS INTEG
+AS INTEGER) AS n
 `
 
 type ProjectRowCountParams struct {
@@ -1224,7 +1113,7 @@ type ProjectRowCountParams struct {
 
 // ============================================================ seed/import wipe (import.go)
 // Five positional params, all the same project id (sqlc names them ProjectID,
-// ProjectID_2, …). Caller passes pid to each. Sum > 0 ⟺ the project has rows.
+// ProjectID_2, etc). Caller passes pid to each. Sum > 0 means the project has rows.
 func (q *Queries) ProjectRowCount(ctx context.Context, arg ProjectRowCountParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, projectRowCount,
 		arg.ProjectID,
@@ -1239,9 +1128,7 @@ func (q *Queries) ProjectRowCount(ctx context.Context, arg ProjectRowCountParams
 }
 
 const researchByProject = `-- name: ResearchByProject :many
-R BY id;
-
-SELECT ord, topic, finding, src FROM research WHERE project_id = ? ORDE
+SELECT ord, topic, finding, src FROM research WHERE project_id = ? ORDER BY ord
 `
 
 type ResearchByProjectRow struct {
@@ -1280,9 +1167,7 @@ func (q *Queries) ResearchByProject(ctx context.Context, projectID sql.NullInt64
 }
 
 const resolveUnknown = `-- name: ResolveUnknown :execrows
-?);
-
-UPDATE unknown SET status = 'resolved' WHERE unknown.ord = ? AND unknown.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id
+UPDATE unknown SET status = 'resolved' WHERE unknown.ord = ? AND unknown.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
 `
 
 type ResolveUnknownParams struct {
@@ -1299,9 +1184,7 @@ func (q *Queries) ResolveUnknown(ctx context.Context, arg ResolveUnknownParams) 
 }
 
 const setTaskStatus = `-- name: SetTaskStatus :execrows
-= ?;
-
-UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id
+UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
 `
 
 type SetTaskStatusParams struct {
@@ -1319,9 +1202,7 @@ func (q *Queries) SetTaskStatus(ctx context.Context, arg SetTaskStatusParams) (i
 }
 
 const showBug = `-- name: ShowBug :one
-ord = ?;
-
-SELECT id, date, cause FROM bug WHERE project_id = ? AND
+SELECT id, date, cause FROM bug WHERE project_id = ? AND ord = ?
 `
 
 type ShowBugParams struct {
@@ -1343,10 +1224,8 @@ func (q *Queries) ShowBug(ctx context.Context, arg ShowBugParams) (ShowBugRow, e
 }
 
 const showInterface = `-- name: ShowInterface :one
-BY i.id;
 
-
-SELECT kind, sig, status FROM interface WHERE project_id = ? AND
+SELECT kind, sig, status FROM interface WHERE project_id = ? AND name = ?
 `
 
 type ShowInterfaceParams struct {
@@ -1369,9 +1248,7 @@ func (q *Queries) ShowInterface(ctx context.Context, arg ShowInterfaceParams) (S
 }
 
 const showInvariant = `-- name: ShowInvariant :one
-ame = ?;
-
-SELECT text FROM invariant WHERE project_id = ? AND
+SELECT text FROM invariant WHERE project_id = ? AND ord = ?
 `
 
 type ShowInvariantParams struct {
@@ -1387,9 +1264,7 @@ func (q *Queries) ShowInvariant(ctx context.Context, arg ShowInvariantParams) (s
 }
 
 const showResearch = `-- name: ShowResearch :one
-ord = ?;
-
-SELECT topic, finding, src FROM research WHERE project_id = ? AND
+SELECT topic, finding, src FROM research WHERE project_id = ? AND ord = ?
 `
 
 type ShowResearchParams struct {
@@ -1411,11 +1286,9 @@ func (q *Queries) ShowResearch(ctx context.Context, arg ShowResearchParams) (Sho
 }
 
 const showTask = `-- name: ShowTask :one
-ord = ?;
-
 SELECT t.id, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? AND t
+WHERE f.project_id = ? AND t.ord = ?
 `
 
 type ShowTaskParams struct {
@@ -1437,9 +1310,7 @@ func (q *Queries) ShowTask(ctx context.Context, arg ShowTaskParams) (ShowTaskRow
 }
 
 const taskCiteIfaceNames = `-- name: TaskCiteIfaceNames :many
-Y i.ord;
-
-SELECT i.name FROM task_cites_iface j JOIN interface i ON i.id = j.iface_id WHERE j.task_id = ? ORDER
+SELECT i.name FROM task_cites_iface j JOIN interface i ON i.id = j.iface_id WHERE j.task_id = ? ORDER BY i.id
 `
 
 func (q *Queries) TaskCiteIfaceNames(ctx context.Context, taskID int64) ([]string, error) {
@@ -1466,9 +1337,7 @@ func (q *Queries) TaskCiteIfaceNames(ctx context.Context, taskID int64) ([]strin
 }
 
 const taskCiteInvOrds = `-- name: TaskCiteInvOrds :many
-Y i.ord;
-
-SELECT i.ord FROM task_cites_inv j JOIN invariant i ON i.id = j.inv_id WHERE j.task_id = ? ORDER
+SELECT i.ord FROM task_cites_inv j JOIN invariant i ON i.id = j.inv_id WHERE j.task_id = ? ORDER BY i.ord
 `
 
 func (q *Queries) TaskCiteInvOrds(ctx context.Context, taskID int64) ([]sql.NullInt64, error) {
@@ -1495,9 +1364,7 @@ func (q *Queries) TaskCiteInvOrds(ctx context.Context, taskID int64) ([]sql.Null
 }
 
 const taskCitersOfInv = `-- name: TaskCitersOfInv :many
-Y t.ord;
-
-SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id = j.task_id WHERE j.inv_id = ? ORDER
+SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id = j.task_id WHERE j.inv_id = ? ORDER BY t.ord
 `
 
 func (q *Queries) TaskCitersOfInv(ctx context.Context, invID int64) ([]sql.NullInt64, error) {
@@ -1524,9 +1391,7 @@ func (q *Queries) TaskCitersOfInv(ctx context.Context, invID int64) ([]sql.NullI
 }
 
 const taskOrdByID = `-- name: TaskOrdByID :one
-= ?;
-
-SELECT ord FROM task WHERE id
+SELECT ord FROM task WHERE id = ?
 `
 
 func (q *Queries) TaskOrdByID(ctx context.Context, id int64) (sql.NullInt64, error) {
@@ -1537,10 +1402,8 @@ func (q *Queries) TaskOrdByID(ctx context.Context, id int64) (sql.NullInt64, err
 }
 
 const taskStatusCounts = `-- name: TaskStatusCounts :many
-Y b.ord;
 
-
-SELECT status, CAST(count(*) AS INTEGER) AS n FROM task WHERE feature_id = ? GROUP B
+SELECT status, CAST(count(*) AS INTEGER) AS n FROM task WHERE feature_id = ? GROUP BY status
 `
 
 type TaskStatusCountsRow struct {
@@ -1573,9 +1436,7 @@ func (q *Queries) TaskStatusCounts(ctx context.Context, featureID int64) ([]Task
 }
 
 const tasksByFeature = `-- name: TasksByFeature :many
-BY ord;
-
-SELECT id, ord, status, text FROM task WHERE feature_id = ? ORDE
+SELECT id, ord, status, text FROM task WHERE feature_id = ? ORDER BY ord
 `
 
 type TasksByFeatureRow struct {
@@ -1614,12 +1475,10 @@ func (q *Queries) TasksByFeature(ctx context.Context, featureID int64) ([]TasksB
 }
 
 const tasksInProject = `-- name: TasksInProject :many
-Y u.ord;
-
 
 SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? ORDER
+WHERE f.project_id = ? ORDER BY t.ord
 `
 
 type TasksInProjectRow struct {
@@ -1662,11 +1521,9 @@ func (q *Queries) TasksInProject(ctx context.Context, projectID sql.NullInt64) (
 }
 
 const tasksInProjectByFeature = `-- name: TasksInProjectByFeature :many
-Y t.ord;
-
 SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? AND t.feature_id = ? ORDER
+WHERE f.project_id = ? AND t.feature_id = ? ORDER BY t.ord
 `
 
 type TasksInProjectByFeatureParams struct {
@@ -1710,11 +1567,9 @@ func (q *Queries) TasksInProjectByFeature(ctx context.Context, arg TasksInProjec
 }
 
 const tasksInProjectByFeatureStatus = `-- name: TasksInProjectByFeatureStatus :many
-Y t.ord;
-
 SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? AND t.feature_id = ? AND t.status = ? ORDER
+WHERE f.project_id = ? AND t.feature_id = ? AND t.status = ? ORDER BY t.ord
 `
 
 type TasksInProjectByFeatureStatusParams struct {
@@ -1759,11 +1614,9 @@ func (q *Queries) TasksInProjectByFeatureStatus(ctx context.Context, arg TasksIn
 }
 
 const tasksInProjectByStatus = `-- name: TasksInProjectByStatus :many
-Y t.ord;
-
 SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? AND t.status = ? ORDER
+WHERE f.project_id = ? AND t.status = ? ORDER BY t.ord
 `
 
 type TasksInProjectByStatusParams struct {
@@ -1807,11 +1660,9 @@ func (q *Queries) TasksInProjectByStatus(ctx context.Context, arg TasksInProject
 }
 
 const unknownsByProject = `-- name: UnknownsByProject :many
-R BY id;
-
 SELECT u.ord, u.status, u.text
 FROM unknown u JOIN feature f ON f.id = u.feature_id
-WHERE f.project_id = ? ORDER
+WHERE f.project_id = ? ORDER BY u.ord
 `
 
 type UnknownsByProjectRow struct {
@@ -1844,11 +1695,9 @@ func (q *Queries) UnknownsByProject(ctx context.Context, projectID sql.NullInt64
 }
 
 const upsertGate = `-- name: UpsertGate :exec
-ING;
-
 INSERT INTO gate(feature_id, verdict, note, recorded_at) VALUES(?, ?, ?, ?)
 ON CONFLICT(feature_id) DO UPDATE SET
-	verdict = excluded.verdict, note = excluded.note, recorded_at = excluded.recorde
+	verdict = excluded.verdict, note = excluded.note, recorded_at = excluded.recorded_at
 `
 
 type UpsertGateParams struct {
@@ -1869,9 +1718,7 @@ func (q *Queries) UpsertGate(ctx context.Context, arg UpsertGateParams) error {
 }
 
 const wipeFeature = `-- name: WipeFeature :execrows
-?);
-
-DELETE FROM feature WHERE project_id = ? AND ord
+DELETE FROM feature WHERE project_id = ? AND ord = ?
 `
 
 type WipeFeatureParams struct {

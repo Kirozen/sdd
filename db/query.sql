@@ -3,7 +3,7 @@
 -- by `go tool sqlc generate`. Parameters use `?` (sqlc names them from the column)
 -- except where a value is reused or nullable, which use sqlc.arg/sqlc.narg.
 -- The only domain SQL that stays hand-written is backup.go's `.dump` (sqlite_master
--- introspection + dynamic SELECT */INSERT over arbitrary tables) — structurally
+-- introspection + dynamic SELECT */INSERT over arbitrary tables) - structurally
 -- inexpressible in sqlc (table/columns unknown at codegen); the documented V50
 -- exception.
 
@@ -19,7 +19,7 @@ SELECT id FROM project WHERE path = ?;
 UPDATE project SET url = ? WHERE id = ? AND url IS NULL;
 
 -- name: CreateProject :execlastid
--- url is the nullable column, so sqlc types this param sql.NullString — pass an
+-- url is the nullable column, so sqlc types this param sql.NullString - pass an
 -- unset NullString for a project first seen without an origin.
 INSERT INTO project(url, path) VALUES(?, ?);
 
@@ -152,7 +152,7 @@ DELETE FROM feature WHERE project_id = ? AND ord = ?;
 
 -- name: ProjectRowCount :one
 -- Five positional params, all the same project id (sqlc names them ProjectID,
--- ProjectID_2, …). Caller passes pid to each. Sum > 0 ⟺ the project has rows.
+-- ProjectID_2, etc). Caller passes pid to each. Sum > 0 means the project has rows.
 SELECT CAST(
 	(SELECT count(*) FROM invariant WHERE invariant.project_id = ?)
 	+ (SELECT count(*) FROM interface WHERE interface.project_id = ?)
