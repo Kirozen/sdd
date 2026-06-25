@@ -70,6 +70,34 @@ invariant est `V1`, le deuxième `V2`, etc. (idem `T`, `B`, `R`, `U`, `F`). C'es
 cette clé courte que vous lisez dans `SPEC.md` et que vous passez aux commandes
 (`sdd show V2`, `sdd set-task 7 --status x`).
 
+## Installation comme plugin Claude Code
+
+`sdd` se distribue comme **plugin Claude Code** : les skills et les slash-commands
+`/sdd:*` sont packagés, et le binaire `sdd` est **provisionné automatiquement** au
+démarrage de session.
+
+```
+/plugin marketplace add Kirozen/sdd
+/plugin install sdd@sdd-marketplace
+```
+
+Au premier `SessionStart`, un hook détecte votre OS/arch et télécharge le binaire
+`sdd` correspondant depuis la [release GitHub](https://github.com/Kirozen/sdd/releases)
+de la version du plugin, vérifie son **SHA256**, puis l'installe dans le `bin/` du
+plugin (ajouté au `PATH` de l'outil Bash) — les skills appellent donc `sdd` sans
+configuration. Le provisioning est **idempotent** (ne retélécharge pas si présent)
+et **jamais bloquant** : en cas d'échec (réseau, plateforme non gérée) il affiche
+des instructions d'installation manuelle et laisse la session continuer.
+
+**Plateformes supportées** : macOS et Linux (dont WSL), sur `amd64` et `arm64`.
+Windows natif n'est pas géré en v1 — sous Windows, utilisez WSL ou installez le
+binaire à la main (`go install github.com/kirozen/sdd@latest`).
+
+> **Dogfooding du dépôt lui-même** — ce dépôt *est* le plugin (les skills vivent
+> sous `skills/`, plus sous `.claude/skills/` : source unique). Pour travailler
+> sur `sdd` avec ses propres skills, installez le plugin localement :
+> `/plugin marketplace add ./` puis `/plugin install sdd@sdd-marketplace`.
+
 ## Le workflow (skills)
 
 Les skills `sdd-*` orchestrent le cycle de vie ; chaque écriture durable passe
