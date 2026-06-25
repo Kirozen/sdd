@@ -30,7 +30,7 @@ warn() { printf '[sdd-plugin] %s\n' "$1" >&2; }
 give_up() {
 	warn "$1"
 	warn "sdd binary not provisioned automatically. Install it manually:"
-	warn "  go install github.com/kirozen/sdd@latest   # if you have Go"
+	warn "  go install github.com/kirozen/sdd/cmd/sdd@latest   # if you have Go"
 	warn "  # or download a binary from https://github.com/${REPO}/releases"
 	warn "Then ensure it is on your PATH. The plugin's sdd-* skills need it."
 	exit 0

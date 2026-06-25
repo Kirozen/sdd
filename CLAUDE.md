@@ -9,12 +9,18 @@ generated read-only view. The full user-facing rationale and vocabulary is in
 ## Commands
 
 ```bash
-go build -o sdd .              # build the CLI
-go test ./...                  # run all tests (one package, ~100 tests)
-go test -run TestMigrateChainV2toV4   # single test by name
+go build -o sdd ./cmd/sdd      # build the CLI (entrypoint in cmd/sdd)
+go test ./...                  # run all tests (the suite lives in internal/sdd)
+go test -run TestMigrateChainV2toV4 ./internal/sdd   # single test by name
 go vet ./...                   # lint
-go tool sqlc generate          # regenerate the db/ query package from db/schema + db/query.sql
+go tool sqlc generate          # regenerate internal/db query pkg from internal/sdd/schema + internal/db/query.sql
 ```
+
+**Layout.** `cmd/sdd/main.go` is the thin entrypoint (holds `version`, injected
+via `-X main.version` at release). All command + render + migration logic is the
+`internal/sdd` package (where the whole test suite lives). The sqlc-generated
+typed query package is `internal/db`. The embedded DDL sits at
+`internal/sdd/schema/` next to the migrator that `go:embed`s it.
 
 Tests use the real cobra root in temp dirs against a temp XDG store — no mocks. There is
 no CI config; the full gate is `go test ./...` + `go vet ./...` **plus**
@@ -25,12 +31,14 @@ uncommitted fails the gate (V54), since `go test`/`go vet` alone do not see a st
 
 `sqlc` is pinned as a tool dependency (the `tool` directive in `go.mod`); run it via
 `go tool sqlc`, never a global install, so the version is reproducible. It generates the
-typed query package under `db/` from `db/query.sql` against the DDL in `db/schema/`.
+typed query package under `internal/db/` from `internal/db/query.sql` against the DDL in
+`internal/sdd/schema/`.
 **sqlc is build-time only — it never runs migrations** (V52); the runtime schema is still
-driven by `userVersion` + the `migrations` map in `schema.go`. The DDL in `db/schema/*.sql`
+driven by `userVersion` + the derived step chain in `schema.go`. The DDL in
+`internal/sdd/schema/*.sql`
 is the *single source* the runtime migrator embeds via `go:embed` AND sqlc reads for
 codegen, so the codegen schema and the runtime schema cannot diverge (V51). All SQL lives
-in `db/query.sql` as named queries; no hand-written SQL string literal survives in command
+in `internal/db/query.sql` as named queries; no hand-written SQL string literal survives in command
 or render code (V50).
 
 ## Architecture
@@ -71,7 +79,7 @@ SPEC.md line (V18).
 
 ### Schema migrations
 
-`schema.go` is the migration anchor. To add a version: **drop a `db/schema/00N_*.sql` file
+`schema.go` is the migration anchor. To add a version: **drop a `internal/sdd/schema/00N_*.sql` file
 and bump `userVersion`** — nothing else. The migration chain is *derived* from the embedded
 files (`schemaSteps`, V59): `fs.ReadDir` returns them sorted, and file `00N` produces schema
 version `N+1` (`001_base` = v2). There is no `migrations` map or per-file DDL var to keep in

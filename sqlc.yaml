@@ -5,12 +5,12 @@
 version: "2"
 sql:
   - engine: "sqlite"
-    schema: "db/schema"      # ordered DDL files, applied in filename order (T54)
-    queries: "db/query.sql"  # every named query that replaces hand-written SQL (T55, V50)
+    schema: "internal/sdd/schema"   # ordered DDL files, applied in filename order (T54)
+    queries: "internal/db/query.sql" # every named query that replaces hand-written SQL (T55, V50)
     gen:
       go:
         package: "db"
-        out: "db"
+        out: "internal/db"
         sql_package: "database/sql"  # driver-agnostic; works with modernc.org/sqlite
         emit_empty_slices: true      # :many returns []T{} not nil — matches range-over-rows
         # project_id and ord are nullable in the schema but never NULL in practice

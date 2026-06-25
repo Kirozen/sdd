@@ -6,7 +6,7 @@
 .PHONY: build test vet gen fmt align upgrade gate
 
 build:
-	CGO_ENABLED=0 go build -trimpath -o sdd .
+	CGO_ENABLED=0 go build -trimpath -o sdd ./cmd/sdd
 
 test:
 	go tool gotestsum --format-hide-empty-pkg ./...

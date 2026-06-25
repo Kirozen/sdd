@@ -91,7 +91,7 @@ des instructions d'installation manuelle et laisse la session continuer.
 
 **Plateformes supportées** : macOS et Linux (dont WSL), sur `amd64` et `arm64`.
 Windows natif n'est pas géré en v1 — sous Windows, utilisez WSL ou installez le
-binaire à la main (`go install github.com/kirozen/sdd@latest`).
+binaire à la main (`go install github.com/kirozen/sdd/cmd/sdd@latest`).
 
 > **Dogfooding du dépôt lui-même** — ce dépôt *est* le plugin (les skills vivent
 > sous `skills/`, plus sous `.claude/skills/` : source unique). Pour travailler

@@ -7,7 +7,7 @@ project_name: sdd
 
 builds:
   - id: sdd
-    main: .
+    main: ./cmd/sdd
     binary: sdd
     env:
       - CGO_ENABLED=0
