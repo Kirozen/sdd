@@ -52,8 +52,20 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 		return listTasks(db, projectID)
 	case "bug":
 		return listBugs(db, projectID)
+	case "unknown":
+		// Feature-scoped, all statuses (open + resolved), per-project ordinal U<n>.
+		// Not part of listAllKinds, so `list` (no kind) omits it (V28); only an
+		// explicit `list unknown` surfaces them.
+		return listRows(db, `SELECT u.ord, u.status, u.text FROM unknown u JOIN feature f ON f.id=u.feature_id WHERE f.project_id=? ORDER BY u.ord`, projectID, func(rows *sql.Rows) (string, error) {
+			var ord int
+			var status, text string
+			if err := rows.Scan(&ord, &status, &text); err != nil {
+				return "", err
+			}
+			return fmtUnknownLine(ord, status, text), nil
+		})
 	default:
-		return nil, fmt.Errorf("unknown kind %q (want invariant|interface|task|bug|research|feature)", kind)
+		return nil, fmt.Errorf("unknown kind %q (want invariant|interface|task|bug|research|feature|unknown)", kind)
 	}
 }
 

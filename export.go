@@ -46,6 +46,10 @@ func fmtTaskLine(ord int, status, text, cites string) string {
 	return fmt.Sprintf("T%d|%s|%s|%s", ord, status, esc(text), cites)
 }
 
+func fmtUnknownLine(ord int, status, text string) string {
+	return fmt.Sprintf("U%d|%s|%s", ord, status, esc(text))
+}
+
 // renderSpec renders one project's slice of the db to SPEC.md text. Pure
 // function of (db, project) state: every query filters by project_id (V20),
 // orders by the per-project ordinal, and emits nothing volatile (V1, V7).

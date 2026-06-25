@@ -74,16 +74,40 @@ func statusReport(db *sql.DB, projectID int64) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer wr.Close()
 	for wr.Next() {
 		var ord int
 		var name string
 		if err := wr.Scan(&ord, &name); err != nil {
+			wr.Close()
 			return nil, err
 		}
 		out = append(out, fmt.Sprintf("! T%d cites deprecated I.%s", ord, name))
 	}
-	return out, wr.Err()
+	wr.Close()
+	if err := wr.Err(); err != nil {
+		return nil, err
+	}
+
+	// V37: flag every feature carrying at least one open unknown (non-blocking).
+	ur, err := db.Query(`SELECT f.ord, f.name, count(*)
+		FROM unknown u
+		JOIN feature f ON f.id = u.feature_id
+		WHERE f.project_id = ? AND u.status = 'open'
+		GROUP BY f.id
+		ORDER BY f.ord`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer ur.Close()
+	for ur.Next() {
+		var ord, n int
+		var name string
+		if err := ur.Scan(&ord, &name, &n); err != nil {
+			return nil, err
+		}
+		out = append(out, fmt.Sprintf("! F%d %s: %d unknowns ouverts", ord, name, n))
+	}
+	return out, ur.Err()
 }
 
 // featureStage infers a feature's pipeline stage from its data (V32, first
