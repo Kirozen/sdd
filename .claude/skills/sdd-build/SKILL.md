@@ -10,10 +10,10 @@ description: |
 # sdd-build — implement the spec
 
 Single-thread plan→execute. The task list lives in spec.db; read it via
-`sdd export && cat SPEC.md`.
+`sdd cat` (durables + unfinished features; `sdd cat --feature N` for one).
 
 ## LOAD
-1. `sdd export` then read SPEC.md. If no spec.db → tell the user to run sdd-spec. Stop.
+1. `sdd cat` to read the spec. If no spec.db → tell the user to run sdd-spec. Stop.
 2. Pick the target: `T<n>` (that task), `--next` (lowest `.`/`~`), or `--all`.
 3. High blast radius (shared module, data, public interface)? Run sdd-review first.
 

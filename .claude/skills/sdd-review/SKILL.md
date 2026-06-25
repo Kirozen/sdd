@@ -2,7 +2,7 @@
 name: sdd-review
 description: |
   Adversarial senior review of the spec before any code is written. Tries to
-  refute the spec (read via sdd export), citing evidence; survivors harden into
+  refute the spec (read via sdd cat), citing evidence; survivors harden into
   invariants via the sdd CLI. Ends on an explicit go / no-go gate. Triggers on
   "review the spec", "red-team this", "is this plan sound", or /sdd-review.
 ---
@@ -11,8 +11,8 @@ description: |
 
 **Every finding cites evidence — file:line or a source. No evidence → flag `[unverified]`. Default to refuted.**
 
-A refutation attempt, not "looks good". Read the spec with `sdd export && cat
-SPEC.md` — you review the spec, not your memory.
+A refutation attempt, not "looks good". Read the spec with `sdd cat` (or `sdd
+cat --feature N` for the feature under review) — you review the spec, not your memory.
 
 ## CONSTRUCT THE SENIOR
 Earn authority before opining: grep the modules the spec touches, read the

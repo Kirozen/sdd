@@ -14,7 +14,7 @@ Optional. Run when you have spare budget to drain on design quality. Behavior is
 held constant: the test suite must be green before and after.
 
 ## STEPS
-1. Read the spec (`sdd export && cat SPEC.md`) and the code it touches. Find the
+1. Read the spec (`sdd cat`) and the code it touches. Find the
    shallowest module — wide interface, shallow implementation, leaked decisions.
 2. Research a deeper design if needed (defer to sdd-research; log findings).
 3. Propose refactors that shrink the interface and hide the decision. Express
