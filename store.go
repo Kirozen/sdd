@@ -35,11 +35,11 @@ func openGlobalDB() (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	if uv == 0 { // freshly created (open creates an empty file at version 0)
-		if err := applySchema(db); err != nil {
-			db.Close()
-			return nil, err
-		}
+	// uv==0 = freshly created file (full schema); uv==2 = additive v3 migration;
+	// uv==3 = current. Unsupported versions error (V36).
+	if err := migrate(db, uv); err != nil {
+		db.Close()
+		return nil, err
 	}
 	return db, nil
 }
