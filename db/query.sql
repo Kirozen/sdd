@@ -62,6 +62,9 @@ SELECT ord FROM feature WHERE id = ?;
 -- name: TaskOrdByID :one
 SELECT ord FROM task WHERE id = ?;
 
+-- name: TaskPKByOrd :one
+SELECT t.id FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.ord = ?;
+
 -- name: InsertGoal :exec
 INSERT INTO goal(feature_id, text) VALUES(?, ?);
 

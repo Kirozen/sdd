@@ -1441,6 +1441,22 @@ func (q *Queries) TaskOrdByID(ctx context.Context, id int64) (int64, error) {
 	return ord, err
 }
 
+const taskPKByOrd = `-- name: TaskPKByOrd :one
+SELECT t.id FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.ord = ?
+`
+
+type TaskPKByOrdParams struct {
+	ProjectID int64
+	Ord       int64
+}
+
+func (q *Queries) TaskPKByOrd(ctx context.Context, arg TaskPKByOrdParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, taskPKByOrd, arg.ProjectID, arg.Ord)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const taskStatusCounts = `-- name: TaskStatusCounts :many
 
 SELECT status, CAST(count(*) AS INTEGER) AS n FROM task WHERE feature_id = ? GROUP BY status
