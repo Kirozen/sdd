@@ -383,13 +383,36 @@ func listRows(db *sql.DB, query string, projectID int64, fn func(*sql.Rows) (str
 // listTasks and listBugs need a second query per row (cites / fix), so they
 // drain the cursor before re-joining.
 func listTasks(db *sql.DB, projectID int64) ([]string, error) {
+	return listTasksFiltered(db, projectID, "", 0)
+}
+
+// listTasksFiltered lists a project's tasks, optionally narrowed by status
+// (V38: "" = any, else exactly one of .|~|x) and feature ordinal (0 = any, else
+// the feature must exist or it errors). Lines render through fmtTaskLine (V18).
+func listTasksFiltered(db *sql.DB, projectID int64, status string, featureOrd int64) ([]string, error) {
+	q := `SELECT t.id, t.ord, t.status, t.text FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=?`
+	qargs := []any{projectID}
+	if featureOrd > 0 {
+		pk, err := featurePK(db, projectID, featureOrd) // missing feature → error (V38)
+		if err != nil {
+			return nil, err
+		}
+		q += ` AND t.feature_id=?`
+		qargs = append(qargs, pk)
+	}
+	if status != "" {
+		q += ` AND t.status=?`
+		qargs = append(qargs, status)
+	}
+	q += ` ORDER BY t.ord`
+
 	type tk struct {
 		pk           int64
 		ord          int
 		status, text string
 	}
 	var tasks []tk
-	rows, err := db.Query(`SELECT t.id, t.ord, t.status, t.text FROM task t JOIN feature f ON f.id=t.feature_id WHERE f.project_id=? ORDER BY t.ord`, projectID)
+	rows, err := db.Query(q, qargs...)
 	if err != nil {
 		return nil, err
 	}
@@ -452,13 +475,23 @@ func listBugs(db *sql.DB, projectID int64) ([]string, error) {
 
 func newListCmd() *cobra.Command {
 	var pretty bool
+	var status string
+	var feature int64
 	c := &cobra.Command{
 		Use:   "list [kind]",
-		Short: "print all rows of a kind (invariant|interface|task|bug|research|feature), or every kind if omitted; read-only",
+		Short: "print all rows of a kind (invariant|interface|task|bug|research|feature|unknown), or every kind if omitted; read-only",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if pretty && len(args) > 0 {
 				return fmt.Errorf("--pretty applies to the full list only (drop the kind argument)")
+			}
+			// V41: --status/--feature are task-only filters.
+			filtering := cmd.Flags().Changed("status") || cmd.Flags().Changed("feature")
+			if filtering && (len(args) == 0 || args[0] != "task") {
+				return fmt.Errorf("--status/--feature apply to `list task` only")
+			}
+			if cmd.Flags().Changed("status") && status != "." && status != "~" && status != "x" {
+				return fmt.Errorf("invalid --status %q (want . ~ x)", status)
 			}
 			db, pid, _, err := openProjectContext()
 			if err != nil {
@@ -469,6 +502,8 @@ func newListCmd() *cobra.Command {
 			switch {
 			case pretty:
 				lines, err = listPretty(db, pid)
+			case filtering:
+				lines, err = listTasksFiltered(db, pid, status, feature)
 			case len(args) == 0:
 				lines, err = listAll(db, pid)
 			default:
@@ -484,5 +519,7 @@ func newListCmd() *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&pretty, "pretty", false, "grouped human-readable view (no kind argument)")
+	c.Flags().StringVar(&status, "status", "", "filter `list task` by status (. ~ x)")
+	c.Flags().Int64Var(&feature, "feature", 0, "filter `list task` by feature number")
 	return c
 }
