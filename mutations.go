@@ -159,6 +159,16 @@ func addBug(db dbq.DBTX, projectID int64, date, cause string, fixRefs []string) 
 // mutation fn inside it, then re-exports SPEC.md atomically (V8). The returned
 // message (if any) is printed on success.
 func runMutation(fn func(dbq.DBTX, int64) (string, error)) error {
+	// Inside an `sdd apply` run the batch owns the tx, the commit, and the single
+	// re-export (V62, V66): route the mutation through the shared tx and return.
+	if b := currentBatch; b != nil {
+		msg, err := fn(b.tx, b.pid)
+		if err != nil {
+			return err
+		}
+		b.lastMsg = msg
+		return nil
+	}
 	db, pid, specFile, err := openProjectContext()
 	if err != nil {
 		return err

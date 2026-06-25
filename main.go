@@ -29,6 +29,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newBackupCmd())
 	root.AddCommand(newSetTaskCmd())
 	root.AddCommand(newAddCiteCmd())
+	root.AddCommand(newApplyCmd())
 	root.AddCommand(newAddResearchCmd())
 	root.AddCommand(newEditCmd())
 	root.AddCommand(newDeprecateInterfaceCmd())
