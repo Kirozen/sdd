@@ -433,6 +433,10 @@ GROUP BY i.id ORDER BY i.ord;
 
 -- ============================================================ reads: stats (stats.go) -- F22
 
+-- name: ProjectByID :one
+-- url (nullable) + path for one project, for the 'PROJECT <identity>' header.
+SELECT url, path FROM project WHERE id = ?;
+
 -- name: ProjectStats :one
 -- Per-type volume counts for ONE project, every subquery scoped to the same
 -- project_id (V104): feature-scoped tables (unknown, task) join feature; test

@@ -1427,6 +1427,25 @@ func (q *Queries) PendingTasks(ctx context.Context, projectID int64) ([]PendingT
 	return items, nil
 }
 
+const projectByID = `-- name: ProjectByID :one
+
+SELECT url, path FROM project WHERE id = ?
+`
+
+type ProjectByIDRow struct {
+	Url  sql.NullString
+	Path string
+}
+
+// ============================================================ reads: stats (stats.go) -- F22
+// url (nullable) + path for one project, for the 'PROJECT <identity>' header.
+func (q *Queries) ProjectByID(ctx context.Context, id int64) (ProjectByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, projectByID, id)
+	var i ProjectByIDRow
+	err := row.Scan(&i.Url, &i.Path)
+	return i, err
+}
+
 const projectByPath = `-- name: ProjectByPath :one
 SELECT id FROM project WHERE path = ?
 `
@@ -1496,7 +1515,6 @@ func (q *Queries) ProjectRowCount(ctx context.Context, arg ProjectRowCountParams
 }
 
 const projectStats = `-- name: ProjectStats :one
-
 SELECT
 	CAST((SELECT count(*) FROM invariant WHERE invariant.project_id = ?) AS INTEGER) AS invariants,
 	CAST((SELECT count(*) FROM interface WHERE interface.project_id = ?) AS INTEGER) AS interfaces,
@@ -1539,7 +1557,6 @@ type ProjectStatsRow struct {
 	TasksDone  int64
 }
 
-// ============================================================ reads: stats (stats.go) -- F22
 // Per-type volume counts for ONE project, every subquery scoped to the same
 // project_id (V104): feature-scoped tables (unknown, task) join feature; test
 // joins invariant. Eleven positional params, all the same pid (sqlc names them

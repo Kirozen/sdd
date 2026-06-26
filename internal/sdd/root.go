@@ -58,5 +58,6 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newRmConstraintCmd())
 	root.AddCommand(newProjectsCmd())
 	root.AddCommand(newSearchCmd())
+	root.AddCommand(newStatsCmd())
 	return root
 }
