@@ -155,6 +155,12 @@ d'abord ce qui la cite. `retract-invariant` prévient quand il emporte au passag
 les tests qui le prouvent. `rm-goal`/`rm-constraint` ciblent la *n*-ième ligne
 d'une feature (`sdd rm-goal <F-ord> <n>`, 1-based, dans l'ordre affiché).
 
+`edit` amende le texte d'une ligne en place (l'id ne bouge pas, les citations
+restent valides). Les goals et constraints s'adressent **par position**, comme la
+rétraction : `sdd edit goal <F-ord> <n> --text "…"` (idem `constraint`), jamais
+par PK global — un id d'un autre projet du store partagé est ainsi inatteignable.
+Les autres kinds gardent leur clé : `sdd edit <kind> <ord|nom> --text "…"`.
+
 Quelques commandes utiles pour s'y retrouver : `sdd guide` (où en est chaque
 feature, et quelle skill lancer ensuite), `sdd next` (la prochaine tâche
 actionnable, avec son goal et ses citations résolues), `sdd cover` (quels

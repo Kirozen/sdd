@@ -420,34 +420,60 @@ func (q *Queries) EditBug(ctx context.Context, arg EditBugParams) (int64, error)
 	return result.RowsAffected()
 }
 
-const editConstraint = `-- name: EditConstraint :execrows
-UPDATE "constraint" SET text = ? WHERE id = ?
+const editConstraintByPosition = `-- name: EditConstraintByPosition :execrows
+UPDATE "constraint" SET text = ? WHERE id = (
+	SELECT c.id FROM "constraint" c JOIN feature f ON f.id = c.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY c.id LIMIT 1 OFFSET ?
+)
 `
 
-type EditConstraintParams struct {
-	Text string
-	ID   int64
+type EditConstraintByPositionParams struct {
+	Text      string
+	ProjectID int64
+	Ord       int64
+	Offset    int64
 }
 
-func (q *Queries) EditConstraint(ctx context.Context, arg EditConstraintParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, editConstraint, arg.Text, arg.ID)
+// Edit the n-th constraint (1-based, ORDER BY id) of a feature by ordinal,
+// scoped to the project (V20, V100). Pass OFFSET = n-1.
+func (q *Queries) EditConstraintByPosition(ctx context.Context, arg EditConstraintByPositionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, editConstraintByPosition,
+		arg.Text,
+		arg.ProjectID,
+		arg.Ord,
+		arg.Offset,
+	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const editGoal = `-- name: EditGoal :execrows
-UPDATE goal SET text = ? WHERE id = ?
+const editGoalByPosition = `-- name: EditGoalByPosition :execrows
+UPDATE goal SET text = ? WHERE id = (
+	SELECT g.id FROM goal g JOIN feature f ON f.id = g.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY g.id LIMIT 1 OFFSET ?
+)
 `
 
-type EditGoalParams struct {
-	Text string
-	ID   int64
+type EditGoalByPositionParams struct {
+	Text      string
+	ProjectID int64
+	Ord       int64
+	Offset    int64
 }
 
-func (q *Queries) EditGoal(ctx context.Context, arg EditGoalParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, editGoal, arg.Text, arg.ID)
+// Edit the n-th goal (1-based, ORDER BY id as rendered) of a feature addressed by
+// its ordinal, scoped to the project (V20, V100). Pass OFFSET = n-1.
+func (q *Queries) EditGoalByPosition(ctx context.Context, arg EditGoalByPositionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, editGoalByPosition,
+		arg.Text,
+		arg.ProjectID,
+		arg.Ord,
+		arg.Offset,
+	)
 	if err != nil {
 		return 0, err
 	}

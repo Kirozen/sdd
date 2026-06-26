@@ -54,16 +54,6 @@ func editRow(db dbq.DBTX, projectID int64, kind, key, text string) error {
 		n, err = q.EditTask(ctx, dbq.EditTaskParams{Text: text, Ord: int64(ord), ProjectID: projectID})
 	case "interface":
 		n, err = q.EditInterfaceSig(ctx, dbq.EditInterfaceSigParams{Sig: text, ProjectID: projectID, Name: key})
-	case "goal", "constraint":
-		id, e := strconv.ParseInt(key, 10, 64)
-		if e != nil {
-			return fmt.Errorf("bad %s id %q", kind, key)
-		}
-		if kind == "goal" {
-			n, err = q.EditGoal(ctx, dbq.EditGoalParams{Text: text, ID: id})
-		} else {
-			n, err = q.EditConstraint(ctx, dbq.EditConstraintParams{Text: text, ID: id})
-		}
 	default:
 		return fmt.Errorf("unknown kind %q", kind)
 	}
@@ -105,15 +95,65 @@ func newAddResearchCmd() *cobra.Command {
 	}
 }
 
+// editGoalByPos/editConstraintByPos edit the n-th goal/constraint (1-based,
+// ORDER BY id as rendered) of the feature addressed by its ordinal, scoped to the
+// current project (V20, V100). Addressing is by POSITION, never by global PK
+// (V26/V100) — the B6 trap, where editing by bare PK leaked across the shared
+// store. Mirrors rmGoal/rmConstraint. n==0 rows → error (no such feature/position
+// in this project).
+func editGoalByPos(db dbq.DBTX, projectID, featureOrd int64, n int, text string) error {
+	rows, err := dbq.New(db).EditGoalByPosition(context.Background(), dbq.EditGoalByPositionParams{
+		Text: text, ProjectID: projectID, Ord: featureOrd, Offset: int64(n - 1),
+	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("no goal #%d in feature %d of this project", n, featureOrd)
+	}
+	return nil
+}
+
+func editConstraintByPos(db dbq.DBTX, projectID, featureOrd int64, n int, text string) error {
+	rows, err := dbq.New(db).EditConstraintByPosition(context.Background(), dbq.EditConstraintByPositionParams{
+		Text: text, ProjectID: projectID, Ord: featureOrd, Offset: int64(n - 1),
+	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("no constraint #%d in feature %d of this project", n, featureOrd)
+	}
+	return nil
+}
+
 func newEditCmd() *cobra.Command {
 	var text string
 	c := &cobra.Command{
-		Use:   "edit <kind> <key>",
-		Short: "edit a row's text in place (key: ordinal, or interface name)",
-		Args:  cobra.ExactArgs(2),
+		Use:   "edit <kind> <key> | edit goal|constraint <F-ord> <n>",
+		Short: "edit a row's text in place (goal/constraint by <F-ord> <n>; others by ordinal/name)",
+		Args:  cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			kind, rest := args[0], args[1:]
+			posKind := kind == "goal" || kind == "constraint"
+			if posKind && len(rest) != 2 {
+				return fmt.Errorf("edit %s takes <F-ord> <n>", kind)
+			}
+			if !posKind && len(rest) != 1 {
+				return fmt.Errorf("edit %s takes a single <key>", kind)
+			}
 			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
-				return fmt.Sprintf("edited %s %s", args[0], args[1]), editRow(db, pid, args[0], args[1], text)
+				if !posKind {
+					return fmt.Sprintf("edited %s %s", kind, rest[0]), editRow(db, pid, kind, rest[0], text)
+				}
+				fo, n, err := posArgs(rest)
+				if err != nil {
+					return "", err
+				}
+				if kind == "goal" {
+					return fmt.Sprintf("edited goal #%d of feature %d", n, fo), editGoalByPos(db, pid, fo, n, text)
+				}
+				return fmt.Sprintf("edited constraint #%d of feature %d", n, fo), editConstraintByPos(db, pid, fo, n, text)
 			})
 		},
 	}

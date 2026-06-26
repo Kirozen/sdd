@@ -133,11 +133,23 @@ UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT featu
 -- name: EditInterfaceSig :execrows
 UPDATE interface SET sig = ? WHERE project_id = ? AND name = ?;
 
--- name: EditGoal :execrows
-UPDATE goal SET text = ? WHERE id = ?;
+-- name: EditGoalByPosition :execrows
+-- Edit the n-th goal (1-based, ORDER BY id as rendered) of a feature addressed by
+-- its ordinal, scoped to the project (V20, V100). Pass OFFSET = n-1.
+UPDATE goal SET text = ? WHERE id = (
+	SELECT g.id FROM goal g JOIN feature f ON f.id = g.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY g.id LIMIT 1 OFFSET ?
+);
 
--- name: EditConstraint :execrows
-UPDATE "constraint" SET text = ? WHERE id = ?;
+-- name: EditConstraintByPosition :execrows
+-- Edit the n-th constraint (1-based, ORDER BY id) of a feature by ordinal,
+-- scoped to the project (V20, V100). Pass OFFSET = n-1.
+UPDATE "constraint" SET text = ? WHERE id = (
+	SELECT c.id FROM "constraint" c JOIN feature f ON f.id = c.feature_id
+	WHERE f.project_id = ? AND f.ord = ?
+	ORDER BY c.id LIMIT 1 OFFSET ?
+);
 
 -- name: DeprecateInterface :execrows
 UPDATE interface SET status = 'deprecated' WHERE project_id = ? AND name = ?;
