@@ -21,6 +21,14 @@ type BugFix struct {
 	InvID int64
 }
 
+type CommandUsage struct {
+	ProjectID int64
+	Command   string
+	OkCount   int64
+	FailCount int64
+	LastSeen  string
+}
+
 type Constraint struct {
 	ID        int64
 	FeatureID int64

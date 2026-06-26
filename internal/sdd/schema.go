@@ -15,8 +15,9 @@ import (
 // ordinals (ord). v3 adds the unknown table (parked grill questions). v4 adds
 // the test table (invariant ↔ proving test, V42). v5 adds the gate table
 // (durable per-feature review verdict, V46). v6 indexes every uncovered
-// foreign-key child column (V58).
-const userVersion = 6
+// foreign-key child column (V58). v7 adds the command_usage table (aggregated
+// per-command invocation counters, V113).
+const userVersion = 7
 
 // schemaFS embeds the DDL that is the SINGLE source for both the runtime migrator
 // (applySchema/migrate, below) and sqlc codegen (V51): sqlc reads these same
