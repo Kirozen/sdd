@@ -2,6 +2,8 @@ package sdd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -51,6 +53,81 @@ func usageCounts(t *testing.T) map[string][2]int64 {
 		out[c] = [2]int64{ok, fail}
 	}
 	return out
+}
+
+// V111: with the usage decorator ACTIVE (the exported NewRootCmd path), read
+// commands still neither re-export SPEC.md nor fail `check`. Every read now
+// writes a command_usage row, but that table is outside the renderer's scope, so
+// SPEC.md stays byte-identical and check stays green — read purity holds at the
+// spec-artifact level even though telemetry mutates the db.
+func TestReadsStayPureUnderUsageRecording(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := gitRepo(t)
+
+	mustRunInstrumented(t, dir, "", "init")
+	mustRunInstrumented(t, dir, "", "add-invariant", "always check auth")
+	mustRunInstrumented(t, dir, "", "new-feature", "f")
+
+	spec := filepath.Join(dir, "SPEC.md")
+	before, err := os.ReadFile(spec)
+	if err != nil {
+		t.Fatalf("read SPEC.md: %v", err)
+	}
+
+	for _, args := range [][]string{
+		{"show", "V1"}, {"list", "invariant"}, {"status"},
+		{"next"}, {"cat"}, {"search", "auth"}, {"stats"},
+	} {
+		mustRunInstrumented(t, dir, "", args...)
+	}
+
+	after, err := os.ReadFile(spec)
+	if err != nil {
+		t.Fatalf("re-read SPEC.md: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("a read re-exported SPEC.md under usage recording (V111)")
+	}
+	mustRunInstrumented(t, dir, "", "check") // db == frozen SPEC.md despite usage writes
+
+	// prove the reads were ACTUALLY recorded (not silently no-op'd), so the
+	// purity guarantee holds *with* live telemetry.
+	if u := usageCounts(t); u["stats"][0] == 0 {
+		t.Error("usage recording did not fire under the instrumented root — test is vacuous")
+	}
+}
+
+// V112/V116: even when the usage table is missing, a command still succeeds —
+// recording is best-effort and never fatal, and never recreates the table (no
+// schema side-effect from telemetry).
+func TestRecordingFailureNeverBreaksCommand(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := gitRepo(t)
+	mustRunInstrumented(t, dir, "", "init")
+
+	// drop the usage table out from under the telemetry path; user_version stays
+	// 7 so neither openGlobalDB nor recording will recreate it.
+	db, err := open(globalDBPath())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := db.Exec(`DROP TABLE command_usage`); err != nil {
+		t.Fatalf("drop: %v", err)
+	}
+	db.Close()
+
+	if err := runInstrumented(t, dir, "", "cat"); err != nil {
+		t.Fatalf("read failed when usage table absent (V112 best-effort): %v", err)
+	}
+
+	db2, err := open(globalDBPath())
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer db2.Close()
+	if tableSQL(t, db2, "command_usage") != "" {
+		t.Error("telemetry recreated command_usage (V116: no schema side-effect)")
+	}
 }
 
 // V110/T136: a single `sdd apply` of N lines records exactly one `apply`
