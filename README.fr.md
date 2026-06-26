@@ -136,16 +136,21 @@ argument il écrit un fichier horodaté `spec-backup-<date>.db` dans le dossier
 courant et affiche son chemin (`--sql` pour un dump texte portable).
 
 **Mutations éphémères (par feature)** : `new-feature`, `add-goal`,
-`add-constraint`, `add-task`, `set-task`, `wipe-feature`, `add-unknown`,
-`resolve-unknown`, `gate`, `rm-task`, `rm-goal`, `rm-constraint`
+`add-constraint`, `add-task`, `add-cite`, `set-task`, `wipe-feature`,
+`add-unknown`, `resolve-unknown`, `gate`, `rm-task`, `rm-goal`, `rm-constraint`
 
 **Mutations durables** : `add-invariant`, `add-interface`, `add-bug`,
 `add-research`, `add-test`, `edit`, `deprecate-interface`, `retract-invariant`,
 `retract-interface`
 
+**Batch** : `sdd apply` lit sur stdin des sous-commandes `add-*` TAB-délimitées
+(une par ligne) et les applique **dans une seule transaction** — tout-ou-rien,
+un seul ré-export final ; un `new-feature` en tête fixe la feature courante.
+C'est le levier d'écriture groupée des agents (sdd-spec).
+
 **Lectures (pures, sans ré-export)** : `show`, `list` (avec `--pretty`, et pour
-les tâches `--status`/`--feature`), `refs`, `status`, `next`, `guide`, `cover`,
-`search`, `projects`, `stats`
+les tâches `--status`/`--feature`), `refs`, `status`, `next`, `todo`, `guide`,
+`cover`, `search`, `projects`, `stats`
 
 Statuts de tâche : `.` à faire · `~` en cours · `x` fait.
 Statuts d'unknown : `open` · `resolved` (jamais supprimé).
@@ -167,9 +172,15 @@ Les autres kinds gardent leur clé : `sdd edit <kind> <ord|nom> --text "…"`. P
 voir ces positions avant d'éditer, `sdd list goal` / `sdd list constraint` listent
 les lignes du projet courant sous la forme `F<ord> <n> | texte`.
 
+`add-cite <T-ord> <cite>…` attache des citations `V<n>`/`I.<name>` à une tâche
+*existante* sans la recréer (FK-gardée, V5) — le complément de `add-task --cites`
+quand on cite après coup.
+
 Quelques commandes utiles pour s'y retrouver : `sdd guide` (où en est chaque
 feature, et quelle skill lancer ensuite), `sdd next` (la prochaine tâche
-actionnable, avec son goal et ses citations résolues), `sdd cover` (quels
+actionnable, avec son goal et ses citations résolues), `sdd todo` (toutes les
+tâches non finies en TSV — contrat de colonnes stable pour scripts et agents ;
+`--pretty` pour une vue humaine groupée), `sdd cover` (quels
 invariants sont gardés par un test, lesquels ne le sont pas), `sdd search
 <terme>` (recherche plein-texte sur le *contenu* des lignes du projet courant —
 là où `refs` cherche par clé de citation), `sdd projects` (tous les projets du

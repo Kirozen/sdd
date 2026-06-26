@@ -17,6 +17,11 @@ Single-thread plan→execute. The task list lives in spec.db; read it via
 2. Pick the target: `T<n>` (that task), `--next` (lowest `.`/`~`), or `--all`.
 3. High blast radius (shared module, data, public interface)? Run sdd-review first.
 
+Orient with the pure read commands: `sdd next` (next actionable task + its goal
+and resolved cites), `sdd todo` (every unfinished task as TSV — machine-readable
+for picking work), `sdd status`/`sdd guide` (per-feature stage). `sdd --help`
+lists every command.
+
 ## PLAN (native plan mode)
 For the chosen task:
 1. Cite every invariant (V<n>) it lists. The plan must respect all.
@@ -37,5 +42,6 @@ On failure: do NOT retry blindly — invoke **sdd-backprop** first.
 
 ## VERIFICATION
 A task is `x` only if the oracle exits 0, every cited invariant has its named
-passing test, and the full suite still passes. `sdd check` must pass (SPEC.md ==
-spec.db). Commit after each task.
+passing test (`sdd cover` flags any invariant with no proving test), and the
+full suite still passes. `sdd check` must pass (SPEC.md == spec.db). Commit after
+each task.

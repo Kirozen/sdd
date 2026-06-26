@@ -130,16 +130,21 @@ goal and resolved citations.
 **Lifecycle**: `init`, `export`, `check`, `backup`, `import`
 
 **Ephemeral mutations (per feature)**: `new-feature`, `add-goal`,
-`add-constraint`, `add-task`, `set-task`, `wipe-feature`, `add-unknown`,
-`resolve-unknown`, `gate`, `rm-task`, `rm-goal`, `rm-constraint`
+`add-constraint`, `add-task`, `add-cite`, `set-task`, `wipe-feature`,
+`add-unknown`, `resolve-unknown`, `gate`, `rm-task`, `rm-goal`, `rm-constraint`
 
 **Durable mutations**: `add-invariant`, `add-interface`, `add-bug`,
 `add-research`, `add-test`, `edit`, `deprecate-interface`, `retract-invariant`,
 `retract-interface`
 
+**Batch**: `sdd apply` reads TAB-delimited `add-*` subcommands from stdin (one
+per line) and applies them all **in a single transaction** — all-or-nothing, a
+single final re-export; a leading `new-feature` sets the current feature. This
+is the agents' bulk-write lever (sdd-spec).
+
 **Reads (pure, no re-export)**: `show`, `list` (with `--pretty`, and
-`--status`/`--feature` for tasks), `refs`, `status`, `next`, `guide`, `cover`,
-`search`, `projects`, `stats`
+`--status`/`--feature` for tasks), `refs`, `status`, `next`, `todo`, `guide`,
+`cover`, `search`, `projects`, `stats`
 
 Task statuses: `.` todo · `~` in progress · `x` done.
 Unknown statuses: `open` · `resolved` (never deleted).
@@ -153,9 +158,15 @@ it also carries away the tests that prove it. `rm-goal`/`rm-constraint` target
 the *n*-th line of a feature (`sdd rm-goal <F-ord> <n>`, 1-based, in displayed
 order).
 
+`add-cite <T-ord> <cite>…` attaches `V<n>`/`I.<name>` citations to an *existing*
+task without recreating it (FK-guarded, V5) — the counterpart to `add-task
+--cites` when you cite after the fact.
+
 A few commands to find your way around: `sdd guide` (where each feature stands,
 and which skill to run next), `sdd next` (the next actionable task, with its goal
-and resolved citations), `sdd cover` (which invariants are guarded by a test and
+and resolved citations), `sdd todo` (every unfinished task as TSV — a stable
+column contract for scripts and agents; `--pretty` for a grouped human view),
+`sdd cover` (which invariants are guarded by a test and
 which are not), `sdd search <term>` (full-text search over the *content* of the
 current project's rows — where `refs` searches by citation key), `sdd projects`
 (every project in the global store with its counts; the only command that looks
