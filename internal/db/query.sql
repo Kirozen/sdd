@@ -284,6 +284,17 @@ SELECT text FROM goal WHERE feature_id = ? ORDER BY id;
 -- name: ConstraintsByFeature :many
 SELECT text FROM "constraint" WHERE feature_id = ? ORDER BY id;
 
+-- name: GoalsByProject :many
+-- Every goal of the project with its feature ordinal, in render order (V18);
+-- per-feature 1-based position is computed by the caller (V102).
+SELECT f.ord, g.text FROM goal g JOIN feature f ON f.id = g.feature_id
+WHERE f.project_id = ? ORDER BY f.ord, g.id;
+
+-- name: ConstraintsByProject :many
+-- Mirror of GoalsByProject for constraints (V102).
+SELECT f.ord, c.text FROM "constraint" c JOIN feature f ON f.id = c.feature_id
+WHERE f.project_id = ? ORDER BY f.ord, c.id;
+
 -- name: UnknownsByProject :many
 SELECT u.ord, u.status, u.text
 FROM unknown u JOIN feature f ON f.id = u.feature_id

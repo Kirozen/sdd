@@ -159,7 +159,9 @@ d'une feature (`sdd rm-goal <F-ord> <n>`, 1-based, dans l'ordre affiché).
 restent valides). Les goals et constraints s'adressent **par position**, comme la
 rétraction : `sdd edit goal <F-ord> <n> --text "…"` (idem `constraint`), jamais
 par PK global — un id d'un autre projet du store partagé est ainsi inatteignable.
-Les autres kinds gardent leur clé : `sdd edit <kind> <ord|nom> --text "…"`.
+Les autres kinds gardent leur clé : `sdd edit <kind> <ord|nom> --text "…"`. Pour
+voir ces positions avant d'éditer, `sdd list goal` / `sdd list constraint` listent
+les lignes du projet courant sous la forme `F<ord> <n> | texte`.
 
 Quelques commandes utiles pour s'y retrouver : `sdd guide` (où en est chaque
 feature, et quelle skill lancer ensuite), `sdd next` (la prochaine tâche

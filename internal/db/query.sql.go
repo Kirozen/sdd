@@ -175,6 +175,40 @@ func (q *Queries) ConstraintsByFeature(ctx context.Context, featureID int64) ([]
 	return items, nil
 }
 
+const constraintsByProject = `-- name: ConstraintsByProject :many
+SELECT f.ord, c.text FROM "constraint" c JOIN feature f ON f.id = c.feature_id
+WHERE f.project_id = ? ORDER BY f.ord, c.id
+`
+
+type ConstraintsByProjectRow struct {
+	Ord  int64
+	Text string
+}
+
+// Mirror of GoalsByProject for constraints (V102).
+func (q *Queries) ConstraintsByProject(ctx context.Context, projectID int64) ([]ConstraintsByProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, constraintsByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ConstraintsByProjectRow{}
+	for rows.Next() {
+		var i ConstraintsByProjectRow
+		if err := rows.Scan(&i.Ord, &i.Text); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createProject = `-- name: CreateProject :execlastid
 INSERT INTO project(url, path) VALUES(?, ?)
 `
@@ -723,6 +757,41 @@ func (q *Queries) GoalsByFeature(ctx context.Context, featureID int64) ([]string
 			return nil, err
 		}
 		items = append(items, text)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const goalsByProject = `-- name: GoalsByProject :many
+SELECT f.ord, g.text FROM goal g JOIN feature f ON f.id = g.feature_id
+WHERE f.project_id = ? ORDER BY f.ord, g.id
+`
+
+type GoalsByProjectRow struct {
+	Ord  int64
+	Text string
+}
+
+// Every goal of the project with its feature ordinal, in render order (V18);
+// per-feature 1-based position is computed by the caller (V102).
+func (q *Queries) GoalsByProject(ctx context.Context, projectID int64) ([]GoalsByProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, goalsByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GoalsByProjectRow{}
+	for rows.Next() {
+		var i GoalsByProjectRow
+		if err := rows.Scan(&i.Ord, &i.Text); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

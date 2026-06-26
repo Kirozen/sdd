@@ -61,6 +61,30 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 		return listTasks(db, projectID)
 	case "bug":
 		return listBugs(db, projectID)
+	case "goal":
+		// Feature-scoped, explicit-only (∉ listAllKinds): surfaces the <F-ord> <n>
+		// coordinates that drive edit/rm (V102). Position is 1-based per feature.
+		rows, err := q.GoalsByProject(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		ords := make([]int64, len(rows))
+		texts := make([]string, len(rows))
+		for i, r := range rows {
+			ords[i], texts[i] = r.Ord, r.Text
+		}
+		return positionLines(ords, texts), nil
+	case "constraint":
+		rows, err := q.ConstraintsByProject(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		ords := make([]int64, len(rows))
+		texts := make([]string, len(rows))
+		for i, r := range rows {
+			ords[i], texts[i] = r.Ord, r.Text
+		}
+		return positionLines(ords, texts), nil
 	case "unknown":
 		// Feature-scoped, all statuses (open + resolved), per-project ordinal U<n>.
 		// Not part of listAllKinds, so `list` (no kind) omits it (V28); only an
@@ -75,8 +99,25 @@ func listKind(db *sql.DB, projectID int64, kind string) ([]string, error) {
 		}
 		return out, nil
 	default:
-		return nil, fmt.Errorf("unknown kind %q (want invariant|interface|task|bug|research|feature|unknown)", kind)
+		return nil, fmt.Errorf("unknown kind %q (want invariant|interface|task|bug|research|feature|unknown|goal|constraint)", kind)
 	}
+}
+
+// positionLines renders feature-scoped rows (goals or constraints), pre-sorted by
+// feature ordinal then id, as `F<ord> <n> | <text>` — the coordinates edit/rm
+// consume (V102). n is 1-based and resets at each feature boundary.
+func positionLines(ords []int64, texts []string) []string {
+	out := make([]string, 0, len(ords))
+	var prev int64 = -1
+	n := 0
+	for i := range ords {
+		if ords[i] != prev {
+			prev, n = ords[i], 0
+		}
+		n++
+		out = append(out, fmt.Sprintf("F%d %d | %s", ords[i], n, texts[i]))
+	}
+	return out
 }
 
 // listAllKinds is the canonical order `list` (no kind) walks — the same order

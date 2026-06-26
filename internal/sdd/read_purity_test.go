@@ -49,6 +49,8 @@ func TestReadCommandsArePure(t *testing.T) {
 	run("guide")
 	run("list", "task", "--status", "x")
 	run("list", "unknown")
+	run("list", "goal")
+	run("list", "constraint")
 	run("todo")
 	run("todo", "--pretty")
 	run("cat")
