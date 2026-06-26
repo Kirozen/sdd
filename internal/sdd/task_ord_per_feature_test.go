@@ -182,7 +182,7 @@ func openV7(t *testing.T) *sql.DB {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	for i := 0; i < 6; i++ { // steps[0..5] = 001..006 => schema v2..v7
+	for i := range 6 { // steps[0..5] = 001..006 => schema v2..v7
 		if _, err := db.Exec(steps[i].sql); err != nil {
 			t.Fatalf("apply step %d: %v", i, err)
 		}

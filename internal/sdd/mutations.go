@@ -199,7 +199,7 @@ func runMutation(fn func(dbq.DBTX, int64) (string, error)) error {
 // sentinel (so an empty cites column round-trips to no cites, B1/V15).
 func splitRefs(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		if p = strings.TrimSpace(p); p != "" && p != "-" {
 			out = append(out, p)
 		}

@@ -10,8 +10,8 @@ import (
 // durablesOf returns the durable prefix (I,R,V,B) of a rendered spec — the text
 // before the first feature block.
 func durablesOf(spec string) string {
-	if i := strings.Index(spec, "\n## FEATURE "); i >= 0 {
-		return spec[:i]
+	if before, _, ok := strings.Cut(spec, "\n## FEATURE "); ok {
+		return before
 	}
 	return spec
 }

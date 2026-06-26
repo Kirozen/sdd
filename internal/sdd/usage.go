@@ -12,8 +12,8 @@ import (
 // queries fold into, so a single renderer serves both views (V114).
 type usageRow struct {
 	command  string
-	ok, fail int64
 	lastSeen string
+	ok, fail int64
 }
 
 // usageLines renders the per-command counter table: command left-aligned, ok and
@@ -58,7 +58,7 @@ func usageReport(db dbq.DBTX, pid int64) ([]string, error) {
 	}
 	rows := make([]usageRow, len(rs))
 	for i, r := range rs {
-		rows[i] = usageRow{r.Command, r.OkCount, r.FailCount, r.LastSeen}
+		rows[i] = usageRow{command: r.Command, ok: r.OkCount, fail: r.FailCount, lastSeen: r.LastSeen}
 	}
 	out := []string{"PROJECT " + projID(p.Url, p.Path)}
 	return append(out, usageLines(rows)...), nil
@@ -74,7 +74,7 @@ func allUsageReport(db dbq.DBTX) ([]string, error) {
 	}
 	rows := make([]usageRow, len(rs))
 	for i, r := range rs {
-		rows[i] = usageRow{r.Command, r.OkCount, r.FailCount, r.LastSeen}
+		rows[i] = usageRow{command: r.Command, ok: r.OkCount, fail: r.FailCount, lastSeen: r.LastSeen}
 	}
 	out := []string{"STORE " + globalDBPath()}
 	return append(out, usageLines(rows)...), nil

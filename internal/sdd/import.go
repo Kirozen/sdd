@@ -103,7 +103,7 @@ func parseSpec(content string) *parsedSpec {
 	var goalLines []string
 	section := ""
 
-	for _, raw := range strings.Split(content, "\n") {
+	for raw := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimRight(raw, " \t")
 		if strings.HasPrefix(line, "## ") {
 			section = sectionOf(line)
@@ -171,12 +171,12 @@ func bullet(s string) (string, bool) {
 }
 
 func parseIface(body string) (kind, name, sig string, ok bool) {
-	colon := strings.Index(body, ":")
-	if colon < 0 {
+	before, after, ok0 := strings.Cut(body, ":")
+	if !ok0 {
 		return "", "", "", false
 	}
-	kind = strings.TrimSpace(body[:colon])
-	sig = strings.TrimSpace(body[colon+1:])
+	kind = strings.TrimSpace(before)
+	sig = strings.TrimSpace(after)
 	name = deriveIfaceName(kind, sig)
 	if name == "" {
 		return "", "", "", false

@@ -44,7 +44,7 @@ func TestStatsScopedToProject(t *testing.T) {
 	addUnknown(db, a, fa, "an unknown")
 
 	// B: deliberately different volumes that must NOT bleed into A's report.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		addInvariant(db, b, "b-inv")
 	}
 	addFeature(db, b, "fb1")
@@ -83,7 +83,7 @@ func TestStatsAllSumsRegistry(t *testing.T) {
 	addInvariant(db, a, "a2")
 	fa, _ := addFeature(db, a, "fa")
 	addTask(db, a, fa, "t", nil)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		addInvariant(db, b, "b")
 	}
 	addFeature(db, b, "fb")
@@ -191,12 +191,12 @@ func TestStatsAllOutsideRepo(t *testing.T) {
 // V105: humanBytes renders binary units deterministically at the boundaries.
 func TestHumanBytes(t *testing.T) {
 	cases := map[int64]string{
-		0:               "0 B",
-		512:             "512 B",
-		1023:            "1023 B",
-		1024:            "1.0 KiB",
-		290816:          "284.0 KiB",
-		1024 * 1024:     "1.0 MiB",
+		0:                  "0 B",
+		512:                "512 B",
+		1023:               "1023 B",
+		1024:               "1.0 KiB",
+		290816:             "284.0 KiB",
+		1024 * 1024:        "1.0 MiB",
 		1024*1024*1024 + 1: "1.0 GiB",
 	}
 	for n, want := range cases {

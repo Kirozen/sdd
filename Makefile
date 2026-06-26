@@ -29,7 +29,7 @@ fmt:
 # (positional composite literals). That exit is advisory, so tolerate it; the gate
 # never depends on it (V79).
 align:
-	go tool betteralign -apply . || true
+	go tool betteralign -apply ./... || true
 
 # Interactive TUI — manual only, kept out of the gate.
 upgrade:

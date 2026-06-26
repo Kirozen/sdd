@@ -19,12 +19,7 @@ func TestListRenderParity(t *testing.T) {
 	}
 	lines := strings.Split(full, "\n")
 	inRender := func(s string) bool {
-		for _, l := range lines {
-			if l == s {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(lines, s)
 	}
 
 	want := map[string]int{"invariant": 2, "interface": 2, "task": 2, "bug": 1, "research": 1}

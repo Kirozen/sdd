@@ -76,8 +76,13 @@ func TestReadsStayPureUnderUsageRecording(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
-		{"show", "V1"}, {"list", "invariant"}, {"status"},
-		{"next"}, {"cat"}, {"search", "auth"}, {"stats"},
+		{"show", "V1"},
+		{"list", "invariant"},
+		{"status"},
+		{"next"},
+		{"cat"},
+		{"search", "auth"},
+		{"stats"},
 	} {
 		mustRunInstrumented(t, dir, "", args...)
 	}
@@ -136,7 +141,8 @@ func insertUsage(t *testing.T, db *sql.DB, pid int64, cmd string, ok, fail int64
 	t.Helper()
 	if _, err := db.Exec(
 		`INSERT INTO command_usage(project_id, command, ok_count, fail_count, last_seen) VALUES(?,?,?,?,?)`,
-		pid, cmd, ok, fail, "2026-01-02T03:04:05Z"); err != nil {
+		pid, cmd, ok, fail, "2026-01-02T03:04:05Z",
+	); err != nil {
 		t.Fatalf("seed usage: %v", err)
 	}
 }

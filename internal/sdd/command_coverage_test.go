@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -61,11 +62,11 @@ func skillCorpus(t *testing.T) string {
 	if len(paths) == 0 {
 		t.Fatal("no SKILL.md under ../../skills — the coverage oracle scans the versioned source (V86), not .claude/skills")
 	}
-	var all string
+	var all strings.Builder
 	for _, p := range paths {
-		all += readDoc(t, p) + "\n"
+		all.WriteString(readDoc(t, p) + "\n")
 	}
-	return all
+	return all.String()
 }
 
 // V107: every spec-surface command must be referenced in a versioned skill or a

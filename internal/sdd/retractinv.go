@@ -17,7 +17,7 @@ import (
 // (003_test.sql), so they cannot block — instead they are announced on stdout
 // before the cascade, never lost silently (V95/V42). Re-exports (V8). The
 // survivors' ordinals are never renumbered (V97).
-func retractInvariant(db dbq.DBTX, projectID int64, ord int64) (string, error) {
+func retractInvariant(db dbq.DBTX, projectID, ord int64) (string, error) {
 	ctx := context.Background()
 	q := dbq.New(db)
 

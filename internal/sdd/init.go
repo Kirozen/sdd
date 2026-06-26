@@ -64,7 +64,7 @@ func ensureGitignore(path string, entries ...string) error {
 	var existing []byte
 	if data, err := os.ReadFile(path); err == nil {
 		existing = data
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			present[strings.TrimSpace(line)] = true
 		}
 	} else if !os.IsNotExist(err) {

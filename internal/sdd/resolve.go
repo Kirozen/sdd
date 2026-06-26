@@ -89,7 +89,7 @@ func mainWorktree(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("not inside a git worktree: %w", err)
 	}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if p, ok := strings.CutPrefix(line, "worktree "); ok {
 			return strings.TrimSpace(p), nil
 		}
