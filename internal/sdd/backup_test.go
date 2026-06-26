@@ -1,8 +1,10 @@
 package sdd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +38,51 @@ func TestBackupRefusesExisting(t *testing.T) {
 	}
 	if err := backupBinary(db, dest); err == nil {
 		t.Error("second backup overwrote existing file")
+	}
+}
+
+// T117 / V103: the default destination is timestamped and extension-typed.
+func TestDefaultBackupDest(t *testing.T) {
+	if d := defaultBackupDest(false); !strings.HasPrefix(d, "spec-backup-") || !strings.HasSuffix(d, ".db") {
+		t.Errorf("default binary dest = %q, want spec-backup-*.db", d)
+	}
+	if d := defaultBackupDest(true); !strings.HasSuffix(d, ".sql") {
+		t.Errorf("default sql dest = %q, want *.sql", d)
+	}
+}
+
+// T117 / V103/U9: `backup` with no path writes a timestamped file in the cwd and
+// prints where it went (no more "accepts 1 arg(s)" failure).
+func TestBackupNoArgWritesTimestamped(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Chdir(gitRepo(t))
+
+	run := func(out *bytes.Buffer, args ...string) {
+		t.Helper()
+		root := newRootCmd()
+		root.SetArgs(args)
+		root.SetOut(out)
+		root.SetErr(&bytes.Buffer{})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("cmd %v: %v", args, err)
+		}
+	}
+
+	run(&bytes.Buffer{}, "init")
+	var out bytes.Buffer
+	run(&out, "backup")
+
+	printed := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(printed, "backup written to spec-backup-") {
+		t.Fatalf("backup output = %q, want 'backup written to spec-backup-...'", printed)
+	}
+	dest := strings.TrimPrefix(printed, "backup written to ")
+	fi, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("stat backup %q: %v", dest, err)
+	}
+	if fi.Size() == 0 {
+		t.Errorf("backup file %q is empty", dest)
 	}
 }
 

@@ -6,9 +6,21 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
+
+// defaultBackupDest builds the cwd-relative timestamped destination used when
+// `backup` is called with no path (V103). The timestamp makes it unique, so it
+// never collides with VACUUM INTO's refuse-to-overwrite guard (R5).
+func defaultBackupDest(asSQL bool) string {
+	ext := "db"
+	if asSQL {
+		ext = "sql"
+	}
+	return fmt.Sprintf("spec-backup-%s.%s", time.Now().Format("20060102-150405"), ext)
+}
 
 // backupBinary writes a consistent binary snapshot via VACUUM INTO (R5). The
 // target must not exist; SQLite refuses to overwrite, so this never clobbers.
@@ -123,19 +135,29 @@ func sqlLit(v any) string {
 func newBackupCmd() *cobra.Command {
 	var asSQL bool
 	c := &cobra.Command{
-		Use:   "backup <path>",
-		Short: "snapshot spec.db (VACUUM INTO, or --sql for a text dump)",
-		Args:  cobra.ExactArgs(1),
+		Use:   "backup [path]",
+		Short: "snapshot spec.db (VACUUM INTO, or --sql for a text dump); default path is timestamped",
+		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			db, err := openGlobalDB() // a snapshot covers the whole global store
 			if err != nil {
 				return err
 			}
 			defer db.Close()
-			if asSQL {
-				return dumpSQL(db, args[0])
+			dest := defaultBackupDest(asSQL)
+			if len(args) == 1 {
+				dest = args[0]
 			}
-			return backupBinary(db, args[0])
+			if asSQL {
+				err = dumpSQL(db, dest)
+			} else {
+				err = backupBinary(db, dest)
+			}
+			if err != nil {
+				return err
+			}
+			cmd.Println("backup written to " + dest)
+			return nil
 		},
 	}
 	c.Flags().BoolVar(&asSQL, "sql", false, "portable SQL-text dump instead of binary snapshot")

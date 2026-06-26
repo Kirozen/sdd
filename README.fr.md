@@ -131,6 +131,10 @@ actionnable avec son goal et ses citations résolues.
 
 **Cycle de vie** : `init`, `export`, `check`, `backup`, `import`
 
+`sdd backup [chemin]` snapshote tout le store global (VACUUM INTO) ; sans
+argument il écrit un fichier horodaté `spec-backup-<date>.db` dans le dossier
+courant et affiche son chemin (`--sql` pour un dump texte portable).
+
 **Mutations éphémères (par feature)** : `new-feature`, `add-goal`,
 `add-constraint`, `add-task`, `set-task`, `wipe-feature`, `add-unknown`,
 `resolve-unknown`, `gate`, `rm-task`, `rm-goal`, `rm-constraint`
