@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	dbq "github.com/kirozen/sdd/internal/db"
 	"github.com/spf13/cobra"
@@ -48,9 +47,9 @@ func editRow(db dbq.DBTX, projectID int64, kind, key, text string, featureOrd in
 			n, err = q.EditBug(ctx, dbq.EditBugParams{Cause: text, ProjectID: projectID, Ord: int64(ord)})
 		}
 	case "task":
-		ord, e := strconv.Atoi(strings.TrimPrefix(key, "T"))
+		ord, e := ordArg(key, "T")
 		if e != nil {
-			return fmt.Errorf("bad task ordinal %q", key)
+			return e
 		}
 		if featureOrd == 0 {
 			return fmt.Errorf("edit task needs --feature <f> (task ords are per-feature, V117)")

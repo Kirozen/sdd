@@ -3,8 +3,6 @@ package sdd
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 
 	dbq "github.com/kirozen/sdd/internal/db"
 	"github.com/spf13/cobra"
@@ -37,12 +35,12 @@ func newAddCiteCmd() *cobra.Command {
 		Short: "attach cites (V<n>/I.<name>) to an existing task",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ord, err := strconv.ParseInt(strings.TrimPrefix(args[0], "T"), 10, 64)
+			ord, err := ordArg(args[0], "T")
 			if err != nil {
-				return fmt.Errorf("bad task id %q", args[0])
+				return err
 			}
 			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
-				if err := addCites(db, pid, int64(feature), ord, args[1:]); err != nil {
+				if err := addCites(db, pid, int64(feature), int64(ord), args[1:]); err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("T%d @F%d += %v", ord, feature, args[1:]), nil

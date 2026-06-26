@@ -30,12 +30,11 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		feats := make([]int64, len(rows))
-		tasks := make([]int64, len(rows))
+		citers := make([]taskCiter, len(rows))
 		for i, r := range rows {
-			feats[i], tasks[i] = r.FeatureOrd, r.TaskOrd
+			citers[i] = taskCiter{r.FeatureOrd, r.TaskOrd}
 		}
-		return taskCiterLines(db, projectID, feats, tasks)
+		return taskCiterLines(db, projectID, citers)
 
 	case strings.HasPrefix(ref, "V"):
 		ord, err := refID(ref)
@@ -50,12 +49,11 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		feats := make([]int64, len(rows))
-		taskOrds := make([]int64, len(rows))
+		citers := make([]taskCiter, len(rows))
 		for i, r := range rows {
-			feats[i], taskOrds[i] = r.FeatureOrd, r.TaskOrd
+			citers[i] = taskCiter{r.FeatureOrd, r.TaskOrd}
 		}
-		tasks, err := taskCiterLines(db, projectID, feats, taskOrds)
+		tasks, err := taskCiterLines(db, projectID, citers)
 		if err != nil {
 			return nil, err
 		}
@@ -74,17 +72,21 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 	}
 }
 
+// taskCiter pairs a citing task's per-feature ordinal with the feature that owns
+// it, so the two stay aligned (V117) instead of riding two parallel slices.
+type taskCiter struct{ featOrd, taskOrd int64 }
+
 // taskCiterLines renders each citing task as "F<f> " + its §T line (V18), so a
 // per-feature T<n> (V117) stays addressable from refs output — mirrors how search
-// carries the feature (V118). feats[i] owns tasks[i].
-func taskCiterLines(db *sql.DB, projectID int64, feats, tasks []int64) ([]string, error) {
-	out := make([]string, 0, len(tasks))
-	for i := range tasks {
-		line, err := showRef(db, projectID, fmt.Sprintf("T%d", tasks[i]), feats[i])
+// carries the feature (V118).
+func taskCiterLines(db *sql.DB, projectID int64, citers []taskCiter) ([]string, error) {
+	out := make([]string, 0, len(citers))
+	for _, c := range citers {
+		line, err := showRef(db, projectID, fmt.Sprintf("T%d", c.taskOrd), c.featOrd)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, fmt.Sprintf("F%d %s", feats[i], line))
+		out = append(out, fmt.Sprintf("F%d %s", c.featOrd, line))
 	}
 	return out, nil
 }
