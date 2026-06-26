@@ -173,7 +173,35 @@ func TestStatsAllOutsideRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("allStatsReport: %v", err)
 	}
-	if got := statCount(t, lines, "db-size"); got == "0" || got == "" {
-		t.Errorf("db-size = %q, want > 0", got)
+	// db-size is humanized (e.g. "151.5 KiB"): a positive value plus a binary unit.
+	var sizeLine string
+	for _, l := range lines {
+		if f := strings.Fields(l); len(f) >= 2 && f[0] == "db-size" {
+			sizeLine = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "db-size"))
+		}
+	}
+	if sizeLine == "0 B" || sizeLine == "" {
+		t.Errorf("db-size = %q, want a positive humanized size", sizeLine)
+	}
+	if !strings.HasSuffix(sizeLine, "B") {
+		t.Errorf("db-size = %q, want a byte unit suffix", sizeLine)
+	}
+}
+
+// V105: humanBytes renders binary units deterministically at the boundaries.
+func TestHumanBytes(t *testing.T) {
+	cases := map[int64]string{
+		0:               "0 B",
+		512:             "512 B",
+		1023:            "1023 B",
+		1024:            "1.0 KiB",
+		290816:          "284.0 KiB",
+		1024 * 1024:     "1.0 MiB",
+		1024*1024*1024 + 1: "1.0 GiB",
+	}
+	for n, want := range cases {
+		if got := humanBytes(n); got != want {
+			t.Errorf("humanBytes(%d) = %q, want %q", n, got, want)
+		}
 	}
 }

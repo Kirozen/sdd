@@ -10,6 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// humanBytes renders a file size in binary units (1024-based), deterministically:
+// raw bytes below 1 KiB, else one decimal with the largest fitting unit.
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for x := n / unit; x >= unit; x /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
 // statsParams fans one project id into the eleven positional params ProjectStats
 // expects, all the same pid — every subquery stays scoped to this project (V104).
 func statsParams(pid int64) dbq.ProjectStatsParams {
@@ -122,7 +137,7 @@ func allStatsReport(db dbq.DBTX) ([]string, error) {
 	out := []string{
 		"STORE " + globalDBPath(),
 		fmt.Sprintf("  projects  %d", len(projects)),
-		fmt.Sprintf("  db-size   %d", size),
+		fmt.Sprintf("  db-size   %s", humanBytes(size)),
 	}
 	return append(out, statTypeLines(total)...), nil
 }
