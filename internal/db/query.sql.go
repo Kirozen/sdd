@@ -148,6 +148,96 @@ func (q *Queries) CitersOfIface(ctx context.Context, ifaceID int64) ([]int64, er
 	return items, nil
 }
 
+const commandUsageAcrossStore = `-- name: CommandUsageAcrossStore :many
+SELECT command,
+	CAST(SUM(ok_count) AS INTEGER)   AS ok_count,
+	CAST(SUM(fail_count) AS INTEGER) AS fail_count,
+	MAX(last_seen)                   AS last_seen
+FROM command_usage
+GROUP BY command
+ORDER BY (SUM(ok_count) + SUM(fail_count)) DESC, command ASC
+`
+
+type CommandUsageAcrossStoreRow struct {
+	Command   string
+	OkCount   int64
+	FailCount int64
+	LastSeen  interface{}
+}
+
+// `sdd usage --all`: store-wide per-command totals, summed across every project
+// (bucket 0 included), most recent last_seen kept; same stable ordering (V114).
+func (q *Queries) CommandUsageAcrossStore(ctx context.Context) ([]CommandUsageAcrossStoreRow, error) {
+	rows, err := q.db.QueryContext(ctx, commandUsageAcrossStore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CommandUsageAcrossStoreRow{}
+	for rows.Next() {
+		var i CommandUsageAcrossStoreRow
+		if err := rows.Scan(
+			&i.Command,
+			&i.OkCount,
+			&i.FailCount,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const commandUsageByProject = `-- name: CommandUsageByProject :many
+SELECT command, ok_count, fail_count, last_seen
+FROM command_usage WHERE project_id = ?
+ORDER BY (ok_count + fail_count) DESC, command ASC
+`
+
+type CommandUsageByProjectRow struct {
+	Command   string
+	OkCount   int64
+	FailCount int64
+	LastSeen  string
+}
+
+// Default `sdd usage` view: one row per command for the current project, busiest
+// first, command name breaking ties so the order is stable (V114).
+func (q *Queries) CommandUsageByProject(ctx context.Context, projectID int64) ([]CommandUsageByProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, commandUsageByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CommandUsageByProjectRow{}
+	for rows.Next() {
+		var i CommandUsageByProjectRow
+		if err := rows.Scan(
+			&i.Command,
+			&i.OkCount,
+			&i.FailCount,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const constraintsByFeature = `-- name: ConstraintsByFeature :many
 SELECT text FROM "constraint" WHERE feature_id = ? ORDER BY id
 `
@@ -2259,6 +2349,42 @@ func (q *Queries) UnknownsByProject(ctx context.Context, projectID int64) ([]Unk
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertCommandUsage = `-- name: UpsertCommandUsage :exec
+
+INSERT INTO command_usage(project_id, command, ok_count, fail_count, last_seen)
+VALUES(?, ?, ?, ?, ?)
+ON CONFLICT(project_id, command) DO UPDATE SET
+	ok_count   = ok_count + excluded.ok_count,
+	fail_count = fail_count + excluded.fail_count,
+	last_seen  = excluded.last_seen
+`
+
+type UpsertCommandUsageParams struct {
+	ProjectID int64
+	Command   string
+	OkCount   int64
+	FailCount int64
+	LastSeen  string
+}
+
+// ============================================================ command usage (F24, V113/V114)
+// Aggregated per-command invocation counters. The caller passes the ok/fail
+// deltas (1/0 for a success, 0/1 for a failure) as the inserted counts; on
+// conflict they ADD to the existing row, so one row per (project_id, command)
+// accumulates without bound (V113). The conflict target (project_id, command)
+// carries the project scope into the UPSERT, so this never addresses a row by
+// bare id (V101). project_id is the sentinel 0 for out-of-project invocations.
+func (q *Queries) UpsertCommandUsage(ctx context.Context, arg UpsertCommandUsageParams) error {
+	_, err := q.db.ExecContext(ctx, upsertCommandUsage,
+		arg.ProjectID,
+		arg.Command,
+		arg.OkCount,
+		arg.FailCount,
+		arg.LastSeen,
+	)
+	return err
 }
 
 const upsertGate = `-- name: UpsertGate :exec
