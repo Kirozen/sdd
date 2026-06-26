@@ -1495,6 +1495,86 @@ func (q *Queries) ProjectRowCount(ctx context.Context, arg ProjectRowCountParams
 	return n, err
 }
 
+const projectStats = `-- name: ProjectStats :one
+
+SELECT
+	CAST((SELECT count(*) FROM invariant WHERE invariant.project_id = ?) AS INTEGER) AS invariants,
+	CAST((SELECT count(*) FROM interface WHERE interface.project_id = ?) AS INTEGER) AS interfaces,
+	CAST((SELECT count(*) FROM bug       WHERE bug.project_id = ?) AS INTEGER) AS bugs,
+	CAST((SELECT count(*) FROM research  WHERE research.project_id = ?) AS INTEGER) AS research,
+	CAST((SELECT count(*) FROM test t JOIN invariant i ON i.id = t.invariant_id WHERE i.project_id = ?) AS INTEGER) AS tests,
+	CAST((SELECT count(*) FROM unknown u JOIN feature f ON f.id = u.feature_id WHERE f.project_id = ?) AS INTEGER) AS unknowns,
+	CAST((SELECT count(*) FROM feature WHERE feature.project_id = ?) AS INTEGER) AS features,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ?) AS INTEGER) AS tasks_total,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.status = '.') AS INTEGER) AS tasks_todo,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.status = '~') AS INTEGER) AS tasks_doing,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.status = 'x') AS INTEGER) AS tasks_done
+`
+
+type ProjectStatsParams struct {
+	ProjectID    int64
+	ProjectID_2  int64
+	ProjectID_3  int64
+	ProjectID_4  int64
+	ProjectID_5  int64
+	ProjectID_6  int64
+	ProjectID_7  int64
+	ProjectID_8  int64
+	ProjectID_9  int64
+	ProjectID_10 int64
+	ProjectID_11 int64
+}
+
+type ProjectStatsRow struct {
+	Invariants int64
+	Interfaces int64
+	Bugs       int64
+	Research   int64
+	Tests      int64
+	Unknowns   int64
+	Features   int64
+	TasksTotal int64
+	TasksTodo  int64
+	TasksDoing int64
+	TasksDone  int64
+}
+
+// ============================================================ reads: stats (stats.go) -- F22
+// Per-type volume counts for ONE project, every subquery scoped to the same
+// project_id (V104): feature-scoped tables (unknown, task) join feature; test
+// joins invariant. Eleven positional params, all the same pid (sqlc names them
+// ProjectID, ProjectID_2, ...). --all sums this over the registry (V105).
+func (q *Queries) ProjectStats(ctx context.Context, arg ProjectStatsParams) (ProjectStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, projectStats,
+		arg.ProjectID,
+		arg.ProjectID_2,
+		arg.ProjectID_3,
+		arg.ProjectID_4,
+		arg.ProjectID_5,
+		arg.ProjectID_6,
+		arg.ProjectID_7,
+		arg.ProjectID_8,
+		arg.ProjectID_9,
+		arg.ProjectID_10,
+		arg.ProjectID_11,
+	)
+	var i ProjectStatsRow
+	err := row.Scan(
+		&i.Invariants,
+		&i.Interfaces,
+		&i.Bugs,
+		&i.Research,
+		&i.Tests,
+		&i.Unknowns,
+		&i.Features,
+		&i.TasksTotal,
+		&i.TasksTodo,
+		&i.TasksDoing,
+		&i.TasksDone,
+	)
+	return i, err
+}
+
 const projectsWithCounts = `-- name: ProjectsWithCounts :many
 
 SELECT p.id, p.url, p.path,

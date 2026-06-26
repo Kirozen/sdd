@@ -430,3 +430,23 @@ SELECT i.ord, i.text, CAST(COALESCE(GROUP_CONCAT(t.name, ', '), '') AS TEXT) AS 
 FROM invariant i LEFT JOIN test t ON t.invariant_id = i.id
 WHERE i.project_id = ?
 GROUP BY i.id ORDER BY i.ord;
+
+-- ============================================================ reads: stats (stats.go) -- F22
+
+-- name: ProjectStats :one
+-- Per-type volume counts for ONE project, every subquery scoped to the same
+-- project_id (V104): feature-scoped tables (unknown, task) join feature; test
+-- joins invariant. Eleven positional params, all the same pid (sqlc names them
+-- ProjectID, ProjectID_2, ...). --all sums this over the registry (V105).
+SELECT
+	CAST((SELECT count(*) FROM invariant WHERE invariant.project_id = ?) AS INTEGER) AS invariants,
+	CAST((SELECT count(*) FROM interface WHERE interface.project_id = ?) AS INTEGER) AS interfaces,
+	CAST((SELECT count(*) FROM bug       WHERE bug.project_id = ?) AS INTEGER) AS bugs,
+	CAST((SELECT count(*) FROM research  WHERE research.project_id = ?) AS INTEGER) AS research,
+	CAST((SELECT count(*) FROM test t JOIN invariant i ON i.id = t.invariant_id WHERE i.project_id = ?) AS INTEGER) AS tests,
+	CAST((SELECT count(*) FROM unknown u JOIN feature f ON f.id = u.feature_id WHERE f.project_id = ?) AS INTEGER) AS unknowns,
+	CAST((SELECT count(*) FROM feature WHERE feature.project_id = ?) AS INTEGER) AS features,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ?) AS INTEGER) AS tasks_total,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.status = '.') AS INTEGER) AS tasks_todo,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.status = '~') AS INTEGER) AS tasks_doing,
+	CAST((SELECT count(*) FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.status = 'x') AS INTEGER) AS tasks_done;
