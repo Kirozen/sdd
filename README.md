@@ -139,7 +139,7 @@ goal and resolved citations.
 
 **Reads (pure, no re-export)**: `show`, `list` (with `--pretty`, and
 `--status`/`--feature` for tasks), `refs`, `status`, `next`, `guide`, `cover`,
-`search`, `projects`
+`search`, `projects`, `stats`
 
 Task statuses: `.` todo · `~` in progress · `x` done.
 Unknown statuses: `open` · `resolved` (never deleted).
@@ -159,7 +159,10 @@ and resolved citations), `sdd cover` (which invariants are guarded by a test and
 which are not), `sdd search <term>` (full-text search over the *content* of the
 current project's rows — where `refs` searches by citation key), `sdd projects`
 (every project in the global store with its counts; the only command that looks
-beyond the current project).
+beyond the current project), `sdd stats` (per-type volume counts — invariants,
+interfaces, bugs, research, tests, unknowns, features, tasks broken down by
+status — for the current project; `sdd stats --all` aggregates the whole store
+and adds the project count and the `spec.db` file size).
 
 ## Where the data lives
 
