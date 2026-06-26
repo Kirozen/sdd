@@ -29,7 +29,7 @@ func retractInterface(db dbq.DBTX, projectID int64, name string) (string, error)
 	if len(taskOrds) > 0 {
 		var cited []string
 		for _, o := range taskOrds {
-			cited = append(cited, fmt.Sprintf("T%d", o))
+			cited = append(cited, fmt.Sprintf("T%d@F%d", o.TaskOrd, o.FeatureOrd))
 		}
 		return "", fmt.Errorf("cannot retract I.%s: cited by %s — retract those first", name, strings.Join(cited, ", "))
 	}

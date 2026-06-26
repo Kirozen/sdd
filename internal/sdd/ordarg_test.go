@@ -57,14 +57,14 @@ func TestSetTaskAndResolveUnknownAcceptPrefix(t *testing.T) {
 	run("add-unknown", "q2", "--feature", "1")
 
 	// prefixed form
-	if err := run("set-task", "T1", "--status", "x"); err != nil {
+	if err := run("set-task", "T1", "--status", "x", "--feature", "1"); err != nil {
 		t.Errorf("set-task T1: %v", err)
 	}
 	if err := run("resolve-unknown", "U1"); err != nil {
 		t.Errorf("resolve-unknown U1: %v", err)
 	}
 	// bare form still works
-	if err := run("set-task", "2", "--status", "x"); err != nil {
+	if err := run("set-task", "2", "--status", "x", "--feature", "1"); err != nil {
 		t.Errorf("set-task 2: %v", err)
 	}
 	if err := run("resolve-unknown", "2"); err != nil {

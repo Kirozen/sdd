@@ -121,23 +121,32 @@ func (q *Queries) BugsByProject(ctx context.Context, projectID int64) ([]BugsByP
 
 const citersOfIface = `-- name: CitersOfIface :many
 
-SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id = j.task_id WHERE j.iface_id = ? ORDER BY t.ord
+SELECT f.ord AS feature_ord, t.ord AS task_ord
+FROM task_cites_iface j JOIN task t ON t.id = j.task_id JOIN feature f ON f.id = t.feature_id
+WHERE j.iface_id = ? ORDER BY f.ord, t.ord
 `
 
+type CitersOfIfaceRow struct {
+	FeatureOrd int64
+	TaskOrd    int64
+}
+
 // ============================================================ reads: refs (refs.go)
-func (q *Queries) CitersOfIface(ctx context.Context, ifaceID int64) ([]int64, error) {
+// F25: task citers carry their owning feature ord so the ref stays addressable
+// (task ord is per-feature now, V117).
+func (q *Queries) CitersOfIface(ctx context.Context, ifaceID int64) ([]CitersOfIfaceRow, error) {
 	rows, err := q.db.QueryContext(ctx, citersOfIface, ifaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []CitersOfIfaceRow{}
 	for rows.Next() {
-		var ord int64
-		if err := rows.Scan(&ord); err != nil {
+		var i CitersOfIfaceRow
+		if err := rows.Scan(&i.FeatureOrd, &i.TaskOrd); err != nil {
 			return nil, err
 		}
-		items = append(items, ord)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -452,19 +461,21 @@ func (q *Queries) DeleteProjectResearch(ctx context.Context, projectID int64) er
 
 const deleteTaskByOrd = `-- name: DeleteTaskByOrd :execrows
 
-DELETE FROM task WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
+DELETE FROM task WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ? AND feature.ord = ?)
 `
 
 type DeleteTaskByOrdParams struct {
 	Ord       int64
 	ProjectID int64
+	Ord_2     int64
 }
 
 // ============================================================ retraction (rmtask.go, retractinv.go, retractiface.go, rmgoal.go) -- F18
 // Hard-delete an ephemeral task by its per-project ordinal (scoped via the
 // feature join, V20); task_cites_* rows cascade (001_base). n==0 => no such task.
+// params: Ord (task ord), ProjectID, Ord_2 (feature ord).
 func (q *Queries) DeleteTaskByOrd(ctx context.Context, arg DeleteTaskByOrdParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, deleteTaskByOrd, arg.Ord, arg.ProjectID)
+	result, err := q.db.ExecContext(ctx, deleteTaskByOrd, arg.Ord, arg.ProjectID, arg.Ord_2)
 	if err != nil {
 		return 0, err
 	}
@@ -661,17 +672,24 @@ func (q *Queries) EditResearch(ctx context.Context, arg EditResearchParams) (int
 }
 
 const editTask = `-- name: EditTask :execrows
-UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
+UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ? AND feature.ord = ?)
 `
 
 type EditTaskParams struct {
 	Text      string
 	Ord       int64
 	ProjectID int64
+	Ord_2     int64
 }
 
+// params: Text, Ord (task ord), ProjectID, Ord_2 (feature ord).
 func (q *Queries) EditTask(ctx context.Context, arg EditTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, editTask, arg.Text, arg.Ord, arg.ProjectID)
+	result, err := q.db.ExecContext(ctx, editTask,
+		arg.Text,
+		arg.Ord,
+		arg.ProjectID,
+		arg.Ord_2,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -1369,13 +1387,13 @@ func (q *Queries) NextResearchOrd(ctx context.Context, projectID int64) (int64, 
 }
 
 const nextTaskOrd = `-- name: NextTaskOrd :one
-SELECT CAST(COALESCE(MAX(t.ord), 0) + 1 AS INTEGER) AS next_ord
-FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ?
+SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord
+FROM task WHERE feature_id = ?
 `
 
-func (q *Queries) NextTaskOrd(ctx context.Context, projectID int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, nextTaskOrd, projectID)
+// F25: task ords are per-feature -> MAX over the owning feature, not the project.
+func (q *Queries) NextTaskOrd(ctx context.Context, featureID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, nextTaskOrd, featureID)
 	var next_ord int64
 	err := row.Scan(&next_ord)
 	return next_ord, err
@@ -1789,18 +1807,70 @@ func (q *Queries) ResolveUnknown(ctx context.Context, arg ResolveUnknownParams) 
 	return result.RowsAffected()
 }
 
+const searchTasks = `-- name: SearchTasks :many
+SELECT f.ord AS feature_ord, t.id, t.ord, t.status, t.text
+FROM task t JOIN feature f ON f.id = t.feature_id
+WHERE f.project_id = ? ORDER BY f.ord, t.ord
+`
+
+type SearchTasksRow struct {
+	FeatureOrd int64
+	ID         int64
+	Ord        int64
+	Status     string
+	Text       string
+}
+
+// F25: search carries the owning feature ord so a task hit stays addressable
+// (T<n> is per-feature now); search prefixes the kind so this is outside V18.
+func (q *Queries) SearchTasks(ctx context.Context, projectID int64) ([]SearchTasksRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchTasks, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchTasksRow{}
+	for rows.Next() {
+		var i SearchTasksRow
+		if err := rows.Scan(
+			&i.FeatureOrd,
+			&i.ID,
+			&i.Ord,
+			&i.Status,
+			&i.Text,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setTaskStatus = `-- name: SetTaskStatus :execrows
-UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?)
+UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ? AND feature.ord = ?)
 `
 
 type SetTaskStatusParams struct {
 	Status    string
 	Ord       int64
 	ProjectID int64
+	Ord_2     int64
 }
 
+// params: Status, Ord (task ord), ProjectID, Ord_2 (feature ord).
 func (q *Queries) SetTaskStatus(ctx context.Context, arg SetTaskStatusParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setTaskStatus, arg.Status, arg.Ord, arg.ProjectID)
+	result, err := q.db.ExecContext(ctx, setTaskStatus,
+		arg.Status,
+		arg.Ord,
+		arg.ProjectID,
+		arg.Ord_2,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -1894,12 +1964,13 @@ func (q *Queries) ShowResearch(ctx context.Context, arg ShowResearchParams) (Sho
 const showTask = `-- name: ShowTask :one
 SELECT t.id, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? AND t.ord = ?
+WHERE f.project_id = ? AND f.ord = ? AND t.ord = ?
 `
 
 type ShowTaskParams struct {
 	ProjectID int64
 	Ord       int64
+	Ord_2     int64
 }
 
 type ShowTaskRow struct {
@@ -1908,8 +1979,9 @@ type ShowTaskRow struct {
 	Text   string
 }
 
+// params: ProjectID, Ord (feature ord), Ord_2 (task ord).
 func (q *Queries) ShowTask(ctx context.Context, arg ShowTaskParams) (ShowTaskRow, error) {
-	row := q.db.QueryRowContext(ctx, showTask, arg.ProjectID, arg.Ord)
+	row := q.db.QueryRowContext(ctx, showTask, arg.ProjectID, arg.Ord, arg.Ord_2)
 	var i ShowTaskRow
 	err := row.Scan(&i.ID, &i.Status, &i.Text)
 	return i, err
@@ -1970,22 +2042,30 @@ func (q *Queries) TaskCiteInvOrds(ctx context.Context, taskID int64) ([]int64, e
 }
 
 const taskCitersOfInv = `-- name: TaskCitersOfInv :many
-SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id = j.task_id WHERE j.inv_id = ? ORDER BY t.ord
+SELECT f.ord AS feature_ord, t.ord AS task_ord
+FROM task_cites_inv j JOIN task t ON t.id = j.task_id JOIN feature f ON f.id = t.feature_id
+WHERE j.inv_id = ? ORDER BY f.ord, t.ord
 `
 
-func (q *Queries) TaskCitersOfInv(ctx context.Context, invID int64) ([]int64, error) {
+type TaskCitersOfInvRow struct {
+	FeatureOrd int64
+	TaskOrd    int64
+}
+
+// F25: task citers carry their owning feature ord (task ord is per-feature, V117).
+func (q *Queries) TaskCitersOfInv(ctx context.Context, invID int64) ([]TaskCitersOfInvRow, error) {
 	rows, err := q.db.QueryContext(ctx, taskCitersOfInv, invID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []TaskCitersOfInvRow{}
 	for rows.Next() {
-		var ord int64
-		if err := rows.Scan(&ord); err != nil {
+		var i TaskCitersOfInvRow
+		if err := rows.Scan(&i.FeatureOrd, &i.TaskOrd); err != nil {
 			return nil, err
 		}
-		items = append(items, ord)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -2008,16 +2088,20 @@ func (q *Queries) TaskOrdByID(ctx context.Context, id int64) (int64, error) {
 }
 
 const taskPKByOrd = `-- name: TaskPKByOrd :one
-SELECT t.id FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.ord = ?
+SELECT t.id FROM task t JOIN feature f ON f.id = t.feature_id
+WHERE f.project_id = ? AND f.ord = ? AND t.ord = ?
 `
 
 type TaskPKByOrdParams struct {
 	ProjectID int64
 	Ord       int64
+	Ord_2     int64
 }
 
+// F25: addressed by (project, feature ord, task ord); params in that order:
+// ProjectID, Ord (feature ord), Ord_2 (task ord). Task ord alone is ambiguous (V117).
 func (q *Queries) TaskPKByOrd(ctx context.Context, arg TaskPKByOrdParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, taskPKByOrd, arg.ProjectID, arg.Ord)
+	row := q.db.QueryRowContext(ctx, taskPKByOrd, arg.ProjectID, arg.Ord, arg.Ord_2)
 	var id int64
 	err := row.Scan(&id)
 	return id, err

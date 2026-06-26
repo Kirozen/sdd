@@ -37,7 +37,7 @@ func retractInvariant(db dbq.DBTX, projectID int64, ord int64) (string, error) {
 	if len(taskOrds)+len(bugOrds) > 0 {
 		var cited []string
 		for _, o := range taskOrds {
-			cited = append(cited, fmt.Sprintf("T%d", o))
+			cited = append(cited, fmt.Sprintf("T%d@F%d", o.TaskOrd, o.FeatureOrd))
 		}
 		for _, o := range bugOrds {
 			cited = append(cited, fmt.Sprintf("B%d", o))

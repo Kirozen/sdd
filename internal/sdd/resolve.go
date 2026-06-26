@@ -64,9 +64,11 @@ func nextOrd(q dbq.DBTX, table string, projectID int64) (int, error) {
 	return int(n), err
 }
 
-// nextTaskOrd is nextOrd for tasks, whose project is reached through feature.
-func nextTaskOrd(q dbq.DBTX, projectID int64) (int, error) {
-	n, err := dbq.New(q).NextTaskOrd(context.Background(), projectID)
+// nextTaskOrd returns the next per-FEATURE task ordinal (V117): MAX(ord)+1 over
+// the owning feature's tasks, so each feature restarts at T1. Takes the feature
+// PK, not the project — task numbering is scoped to its feature now.
+func nextTaskOrd(q dbq.DBTX, featurePK int64) (int, error) {
+	n, err := dbq.New(q).NextTaskOrd(context.Background(), featurePK)
 	return int(n), err
 }
 

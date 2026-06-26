@@ -26,11 +26,16 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("no interface %q in this project", ref)
 		}
-		ords, err := q.CitersOfIface(ctx, iid)
+		rows, err := q.CitersOfIface(ctx, iid)
 		if err != nil {
 			return nil, err
 		}
-		return citerLines(db, projectID, ords, "T")
+		feats := make([]int64, len(rows))
+		tasks := make([]int64, len(rows))
+		for i, r := range rows {
+			feats[i], tasks[i] = r.FeatureOrd, r.TaskOrd
+		}
+		return taskCiterLines(db, projectID, feats, tasks)
 
 	case strings.HasPrefix(ref, "V"):
 		ord, err := refID(ref)
@@ -41,11 +46,16 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("no invariant %q in this project", ref)
 		}
-		taskOrds, err := q.TaskCitersOfInv(ctx, iid)
+		rows, err := q.TaskCitersOfInv(ctx, iid)
 		if err != nil {
 			return nil, err
 		}
-		tasks, err := citerLines(db, projectID, taskOrds, "T")
+		feats := make([]int64, len(rows))
+		taskOrds := make([]int64, len(rows))
+		for i, r := range rows {
+			feats[i], taskOrds[i] = r.FeatureOrd, r.TaskOrd
+		}
+		tasks, err := taskCiterLines(db, projectID, feats, taskOrds)
 		if err != nil {
 			return nil, err
 		}
@@ -64,13 +74,28 @@ func refsTo(db *sql.DB, projectID int64, ref string) ([]string, error) {
 	}
 }
 
-// citerLines renders each citer ordinal as a "<prefix><ord>" ref through showRef
-// (reusing V18 formatting, scoped to projectID). ords come from the generated
-// citer queries as plain int64 (the ord override, non-null by V26).
+// taskCiterLines renders each citing task as "F<f> " + its §T line (V18), so a
+// per-feature T<n> (V117) stays addressable from refs output — mirrors how search
+// carries the feature (V118). feats[i] owns tasks[i].
+func taskCiterLines(db *sql.DB, projectID int64, feats, tasks []int64) ([]string, error) {
+	out := make([]string, 0, len(tasks))
+	for i := range tasks {
+		line, err := showRef(db, projectID, fmt.Sprintf("T%d", tasks[i]), feats[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, fmt.Sprintf("F%d %s", feats[i], line))
+	}
+	return out, nil
+}
+
+// citerLines renders each non-task citer ordinal (bugs, B) as a "<prefix><ord>"
+// ref through showRef (reusing V18 formatting, scoped to projectID). Durable ords
+// are project-scoped, so featureOrd is irrelevant here (passed 0).
 func citerLines(db *sql.DB, projectID int64, ords []int64, prefix string) ([]string, error) {
 	var out []string
 	for _, o := range ords {
-		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, o))
+		line, err := showRef(db, projectID, fmt.Sprintf("%s%d", prefix, o), 0)
 		if err != nil {
 			return nil, err
 		}

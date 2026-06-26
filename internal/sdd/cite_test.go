@@ -27,7 +27,7 @@ func TestAddCitesAttaches(t *testing.T) {
 	addInvariant(db, pid, "inv")             // V1
 	addInterface(db, pid, "cmd", "x", "sig") // I.x
 
-	if err := addCites(db, pid, ordOf(t, db, tpk), []string{"V1", "I.x"}); err != nil {
+	if err := addCites(db, pid, 1, ordOf(t, db, tpk), []string{"V1", "I.x"}); err != nil {
 		t.Fatalf("addCites: %v", err)
 	}
 	if got, _ := taskCites(db, tpk); got != "V1,I.x" {
@@ -45,7 +45,7 @@ func TestAddCitesOrphanRollsBackAll(t *testing.T) {
 	addInvariant(db, pid, "inv") // V1
 
 	mustFailInTx(t, db, func(tx *sql.Tx) error {
-		return addCites(tx, pid, ordOf(t, db, tpk), []string{"V1", "V99"})
+		return addCites(tx, pid, 1, ordOf(t, db, tpk), []string{"V1", "V99"})
 	})
 	if got, _ := taskCites(db, tpk); got != "-" {
 		t.Errorf("partial attach survived rollback: cites = %q, want -", got)
@@ -62,10 +62,10 @@ func TestAddCitesDuplicateErrors(t *testing.T) {
 	addInvariant(db, pid, "inv")
 	ord := ordOf(t, db, tpk)
 
-	if err := addCites(db, pid, ord, []string{"V1"}); err != nil {
+	if err := addCites(db, pid, 1, ord, []string{"V1"}); err != nil {
 		t.Fatalf("first attach: %v", err)
 	}
-	if err := addCites(db, pid, ord, []string{"V1"}); err == nil {
+	if err := addCites(db, pid, 1, ord, []string{"V1"}); err == nil {
 		t.Error("duplicate cite accepted (V74: dup is fail-loud via PK)")
 	}
 }
@@ -75,7 +75,7 @@ func TestAddCitesUnknownTask(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
 	addInvariant(db, pid, "inv")
-	if err := addCites(db, pid, 999, []string{"V1"}); err == nil {
+	if err := addCites(db, pid, 1, 999, []string{"V1"}); err == nil {
 		t.Error("add-cite on unknown task succeeded")
 	}
 }
@@ -93,7 +93,7 @@ func TestAddCitesScopedToProject(t *testing.T) {
 	addInvariant(db, pidA, "ia") // A: V1
 	addInvariant(db, pidB, "ib") // B: V1
 
-	if err := addCites(db, pidA, ordOf(t, db, ta), []string{"V1"}); err != nil {
+	if err := addCites(db, pidA, 1, ordOf(t, db, ta), []string{"V1"}); err != nil {
 		t.Fatalf("attach A: %v", err)
 	}
 	if got, _ := taskCites(db, ta); got != "V1" {

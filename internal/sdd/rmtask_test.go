@@ -19,7 +19,7 @@ func TestRmTaskCascadesCites(t *testing.T) {
 		t.Fatalf("setup: want 1 cite row, got %d", citeRows)
 	}
 
-	if err := rmTask(db, pid, tord); err != nil {
+	if err := rmTask(db, pid, 1, tord); err != nil {
 		t.Fatalf("rmTask: %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestRmTaskCascadesCites(t *testing.T) {
 func TestRmTaskUnknown(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
-	if err := rmTask(db, pid, 999); err == nil {
+	if err := rmTask(db, pid, 1, 999); err == nil {
 		t.Error("rm-task on unknown ord succeeded")
 	}
 }
@@ -58,7 +58,7 @@ func TestRmTaskKeepsSurvivorOrdinals(t *testing.T) {
 	t2, _ := addTask(db, pid, fid, "b", nil)
 	t3, _ := addTask(db, pid, fid, "c", nil)
 
-	if err := rmTask(db, pid, t2); err != nil {
+	if err := rmTask(db, pid, 1, t2); err != nil {
 		t.Fatalf("rmTask: %v", err)
 	}
 	// t1 and t3 keep their ordinals; t2 is a permanent gap.
@@ -84,7 +84,7 @@ func TestRmTaskScoped(t *testing.T) {
 	fb, _ := addFeature(db, b, "f")
 	tb, _ := addTask(db, b, fb, "in B", nil)
 
-	if err := rmTask(db, a, tb); err == nil {
+	if err := rmTask(db, a, 1, tb); err == nil {
 		t.Error("rm-task reached across projects (V20)")
 	}
 	var n int

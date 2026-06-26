@@ -17,7 +17,7 @@ import (
 // (durable per-feature review verdict, V46). v6 indexes every uncovered
 // foreign-key child column (V58). v7 adds the command_usage table (aggregated
 // per-command invocation counters, V113).
-const userVersion = 7
+const userVersion = 8
 
 // schemaFS embeds the DDL that is the SINGLE source for both the runtime migrator
 // (applySchema/migrate, below) and sqlc codegen (V51): sqlc reads these same

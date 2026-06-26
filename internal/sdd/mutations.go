@@ -72,7 +72,7 @@ func addInterface(db dbq.DBTX, projectID int64, kind, name, sig string) (int64, 
 // rolls the whole thing back, so no orphan task survives (V2, V5). The task
 // belongs to projectID (via featurePK); cites resolve within that project (V20).
 func addTask(db dbq.DBTX, projectID, featurePK int64, text string, cites []string) (int64, error) {
-	ord, err := nextTaskOrd(db, projectID)
+	ord, err := nextTaskOrd(db, featurePK)
 	if err != nil {
 		return 0, err
 	}

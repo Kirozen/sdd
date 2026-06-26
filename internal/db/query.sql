@@ -39,9 +39,9 @@ SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM research WHER
 SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord FROM feature WHERE project_id = ?;
 
 -- name: NextTaskOrd :one
-SELECT CAST(COALESCE(MAX(t.ord), 0) + 1 AS INTEGER) AS next_ord
-FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ?;
+-- F25: task ords are per-feature -> MAX over the owning feature, not the project.
+SELECT CAST(COALESCE(MAX(ord), 0) + 1 AS INTEGER) AS next_ord
+FROM task WHERE feature_id = ?;
 
 -- name: NextUnknownOrd :one
 SELECT CAST(COALESCE(MAX(u.ord), 0) + 1 AS INTEGER) AS next_ord
@@ -63,7 +63,10 @@ SELECT ord FROM feature WHERE id = ?;
 SELECT ord FROM task WHERE id = ?;
 
 -- name: TaskPKByOrd :one
-SELECT t.id FROM task t JOIN feature f ON f.id = t.feature_id WHERE f.project_id = ? AND t.ord = ?;
+-- F25: addressed by (project, feature ord, task ord); params in that order:
+-- ProjectID, Ord (feature ord), Ord_2 (task ord). Task ord alone is ambiguous (V117).
+SELECT t.id FROM task t JOIN feature f ON f.id = t.feature_id
+WHERE f.project_id = ? AND f.ord = ? AND t.ord = ?;
 
 -- name: InsertGoal :exec
 INSERT INTO goal(feature_id, text) VALUES(?, ?);
@@ -162,7 +165,8 @@ UPDATE research SET finding = ? WHERE project_id = ? AND ord = ?;
 UPDATE bug SET cause = ? WHERE project_id = ? AND ord = ?;
 
 -- name: EditTask :execrows
-UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?);
+-- params: Text, Ord (task ord), ProjectID, Ord_2 (feature ord).
+UPDATE task SET text = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ? AND feature.ord = ?);
 
 -- name: EditInterfaceSig :execrows
 UPDATE interface SET sig = ? WHERE project_id = ? AND name = ?;
@@ -189,7 +193,8 @@ UPDATE "constraint" SET text = ? WHERE id = (
 UPDATE interface SET status = 'deprecated' WHERE project_id = ? AND name = ?;
 
 -- name: SetTaskStatus :execrows
-UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?);
+-- params: Status, Ord (task ord), ProjectID, Ord_2 (feature ord).
+UPDATE task SET status = ? WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ? AND feature.ord = ?);
 
 -- name: ResolveUnknown :execrows
 UPDATE unknown SET status = 'resolved' WHERE unknown.ord = ? AND unknown.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?);
@@ -202,7 +207,8 @@ DELETE FROM feature WHERE project_id = ? AND ord = ?;
 -- name: DeleteTaskByOrd :execrows
 -- Hard-delete an ephemeral task by its per-project ordinal (scoped via the
 -- feature join, V20); task_cites_* rows cascade (001_base). n==0 => no such task.
-DELETE FROM task WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ?);
+-- params: Ord (task ord), ProjectID, Ord_2 (feature ord).
+DELETE FROM task WHERE task.ord = ? AND task.feature_id IN (SELECT feature.id FROM feature WHERE feature.project_id = ? AND feature.ord = ?);
 
 -- name: DeleteInvariantByOrd :execrows
 -- Hard-delete a durable invariant, scoped (V20). A cited inv_id (task_cites_inv /
@@ -344,6 +350,13 @@ SELECT t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
 WHERE f.project_id = ? ORDER BY t.ord;
 
+-- name: SearchTasks :many
+-- F25: search carries the owning feature ord so a task hit stays addressable
+-- (T<n> is per-feature now); search prefixes the kind so this is outside V18.
+SELECT f.ord AS feature_ord, t.id, t.ord, t.status, t.text
+FROM task t JOIN feature f ON f.id = t.feature_id
+WHERE f.project_id = ? ORDER BY f.ord, t.ord;
+
 -- name: PendingTasks :many
 SELECT f.ord AS feature_ord, f.name AS feature_name, t.id, t.ord, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
@@ -385,9 +398,10 @@ SELECT kind, sig, status FROM interface WHERE project_id = ? AND name = ?;
 SELECT text FROM invariant WHERE project_id = ? AND ord = ?;
 
 -- name: ShowTask :one
+-- params: ProjectID, Ord (feature ord), Ord_2 (task ord).
 SELECT t.id, t.status, t.text
 FROM task t JOIN feature f ON f.id = t.feature_id
-WHERE f.project_id = ? AND t.ord = ?;
+WHERE f.project_id = ? AND f.ord = ? AND t.ord = ?;
 
 -- name: ShowBug :one
 SELECT id, date, cause FROM bug WHERE project_id = ? AND ord = ?;
@@ -398,10 +412,17 @@ SELECT topic, finding, src FROM research WHERE project_id = ? AND ord = ?;
 -- ============================================================ reads: refs (refs.go)
 
 -- name: CitersOfIface :many
-SELECT t.ord FROM task_cites_iface j JOIN task t ON t.id = j.task_id WHERE j.iface_id = ? ORDER BY t.ord;
+-- F25: task citers carry their owning feature ord so the ref stays addressable
+-- (task ord is per-feature now, V117).
+SELECT f.ord AS feature_ord, t.ord AS task_ord
+FROM task_cites_iface j JOIN task t ON t.id = j.task_id JOIN feature f ON f.id = t.feature_id
+WHERE j.iface_id = ? ORDER BY f.ord, t.ord;
 
 -- name: TaskCitersOfInv :many
-SELECT t.ord FROM task_cites_inv j JOIN task t ON t.id = j.task_id WHERE j.inv_id = ? ORDER BY t.ord;
+-- F25: task citers carry their owning feature ord (task ord is per-feature, V117).
+SELECT f.ord AS feature_ord, t.ord AS task_ord
+FROM task_cites_inv j JOIN task t ON t.id = j.task_id JOIN feature f ON f.id = t.feature_id
+WHERE j.inv_id = ? ORDER BY f.ord, t.ord;
 
 -- name: BugCitersOfInv :many
 SELECT b.ord FROM bug_fix j JOIN bug b ON b.id = j.bug_id WHERE j.inv_id = ? ORDER BY b.ord;

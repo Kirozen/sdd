@@ -34,7 +34,7 @@ func TestCrossProjectIsolation(t *testing.T) {
 		t.Errorf("project A invariants = %v, want only alpha", la)
 	}
 	// V1 resolves to each project's own first invariant
-	sb, err := showRef(db, b, "V1")
+	sb, err := showRef(db, b, "V1", 0)
 	if err != nil {
 		t.Fatalf("show b V1: %v", err)
 	}

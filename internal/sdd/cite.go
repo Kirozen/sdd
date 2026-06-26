@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	dbq "github.com/kirozen/sdd/internal/db"
 	"github.com/spf13/cobra"
@@ -14,12 +15,12 @@ import (
 // cites resolve and are FK-guarded identically (V5, V74). All cites go in one
 // transaction: a single bad cite (orphan, or already present → join-table PK)
 // rolls the whole thing back, so a partial attach never survives.
-func addCites(db dbq.DBTX, projectID, taskOrd int64, cites []string) error {
+func addCites(db dbq.DBTX, projectID, featureOrd, taskOrd int64, cites []string) error {
 	taskPK, err := dbq.New(db).TaskPKByOrd(context.Background(), dbq.TaskPKByOrdParams{
-		ProjectID: projectID, Ord: taskOrd,
+		ProjectID: projectID, Ord: featureOrd, Ord_2: taskOrd,
 	})
 	if err != nil {
-		return fmt.Errorf("no task T%d in this project", taskOrd)
+		return fmt.Errorf("no task T%d in feature F%d of this project", taskOrd, featureOrd)
 	}
 	for _, c := range cites {
 		if err := insertCite(db, projectID, taskPK, c); err != nil {
@@ -30,21 +31,25 @@ func addCites(db dbq.DBTX, projectID, taskOrd int64, cites []string) error {
 }
 
 func newAddCiteCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "add-cite <T-ord> <cite> [<cite>...]",
+	var feature int
+	c := &cobra.Command{
+		Use:   "add-cite <T-ord> --feature <f> <cite> [<cite>...]",
 		Short: "attach cites (V<n>/I.<name>) to an existing task",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ord, err := strconv.ParseInt(args[0], 10, 64)
+			ord, err := strconv.ParseInt(strings.TrimPrefix(args[0], "T"), 10, 64)
 			if err != nil {
 				return fmt.Errorf("bad task id %q", args[0])
 			}
 			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
-				if err := addCites(db, pid, ord, args[1:]); err != nil {
+				if err := addCites(db, pid, int64(feature), ord, args[1:]); err != nil {
 					return "", err
 				}
-				return fmt.Sprintf("T%d += %v", ord, args[1:]), nil
+				return fmt.Sprintf("T%d @F%d += %v", ord, feature, args[1:]), nil
 			})
 		},
 	}
+	c.Flags().IntVar(&feature, "feature", 0, "feature ordinal owning the task (required)")
+	c.MarkFlagRequired("feature")
+	return c
 }

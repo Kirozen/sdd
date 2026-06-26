@@ -71,7 +71,7 @@ func searchHits(db *sql.DB, projectID int64, term string) ([]string, error) {
 		}
 	}
 
-	tasks, err := q.TasksInProject(ctx, projectID)
+	tasks, err := q.SearchTasks(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,9 @@ func searchHits(db *sql.DB, projectID int64, term string) ([]string, error) {
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, "task "+fmtTaskLine(int(t.Ord), t.Status, t.Text, cites))
+			// F25: carry the owning feature ord — a per-feature T<n> (V117) is
+			// ambiguous in a flat result; the kind prefix keeps this outside V18 (V118).
+			out = append(out, fmt.Sprintf("task F%d ", t.FeatureOrd)+fmtTaskLine(int(t.Ord), t.Status, t.Text, cites))
 		}
 	}
 

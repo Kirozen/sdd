@@ -163,7 +163,7 @@ func resolveCites(db *sql.DB, projectID int64, cites string) ([]string, error) {
 	}
 	lines := make([]string, 0, len(refs))
 	for _, r := range refs {
-		line, err := showRef(db, projectID, r)
+		line, err := showRef(db, projectID, r, 0) // cites are V/I only, never T (no feature needed)
 		if err != nil {
 			return nil, fmt.Errorf("resolving cite %q: %w", r, err)
 		}

@@ -29,7 +29,7 @@ func TestShowRenderParity(t *testing.T) {
 
 	// one ref of each kind (fixtureSpec seeds them all)
 	for _, ref := range []string{"V1", "I.init", "T1", "B1", "R1"} {
-		got, err := showRef(db, pid, ref)
+		got, err := showRef(db, pid, ref, 1)
 		if err != nil {
 			t.Fatalf("show %s: %v", ref, err)
 		}
@@ -47,7 +47,7 @@ func TestShowUnknownRef(t *testing.T) {
 		t.Fatalf("seedDB: %v", err)
 	}
 	for _, ref := range []string{"V99", "I.nope", "T42", "B7", "R3", "Z1", "garbage"} {
-		if _, err := showRef(db, pid, ref); err == nil {
+		if _, err := showRef(db, pid, ref, 1); err == nil {
 			t.Errorf("show %q succeeded, want error (V17)", ref)
 		}
 	}

@@ -18,7 +18,7 @@ func TestProjectsCountsMultiProject(t *testing.T) {
 	fa, _ := addFeature(db, a, "fa")
 	addTask(db, a, fa, "t-open", nil)
 	tdone, _ := addTask(db, a, fa, "t-done", nil)
-	setTaskStatus(db, a, tdone, "x")
+	setTaskStatus(db, a, 1, tdone, "x")
 	// B: empty (LEFT-JOIN style 0/0/0).
 
 	lines, err := projectLines(db, 0)

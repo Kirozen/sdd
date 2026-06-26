@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	dbq "github.com/kirozen/sdd/internal/db"
 	"github.com/spf13/cobra"
@@ -25,7 +26,7 @@ func addResearch(db dbq.DBTX, projectID int64, topic, finding, src string) (int6
 // editRow updates a row's primary text field by the right typed query per kind
 // (V50: no interpolated table/column). The row id never changes, so citations
 // stay valid (V12); n==0 means the addressed row is absent in this project.
-func editRow(db dbq.DBTX, projectID int64, kind, key, text string) error {
+func editRow(db dbq.DBTX, projectID int64, kind, key, text string, featureOrd int64) error {
 	ctx := context.Background()
 	q := dbq.New(db)
 	var (
@@ -47,11 +48,14 @@ func editRow(db dbq.DBTX, projectID int64, kind, key, text string) error {
 			n, err = q.EditBug(ctx, dbq.EditBugParams{Cause: text, ProjectID: projectID, Ord: int64(ord)})
 		}
 	case "task":
-		ord, e := strconv.Atoi(key)
+		ord, e := strconv.Atoi(strings.TrimPrefix(key, "T"))
 		if e != nil {
 			return fmt.Errorf("bad task ordinal %q", key)
 		}
-		n, err = q.EditTask(ctx, dbq.EditTaskParams{Text: text, Ord: int64(ord), ProjectID: projectID})
+		if featureOrd == 0 {
+			return fmt.Errorf("edit task needs --feature <f> (task ords are per-feature, V117)")
+		}
+		n, err = q.EditTask(ctx, dbq.EditTaskParams{Text: text, Ord: int64(ord), ProjectID: projectID, Ord_2: featureOrd})
 	case "interface":
 		n, err = q.EditInterfaceSig(ctx, dbq.EditInterfaceSigParams{Sig: text, ProjectID: projectID, Name: key})
 	default:
@@ -129,9 +133,10 @@ func editConstraintByPos(db dbq.DBTX, projectID, featureOrd int64, n int, text s
 
 func newEditCmd() *cobra.Command {
 	var text string
+	var feature int
 	c := &cobra.Command{
-		Use:   "edit <kind> <key> | edit goal|constraint <F-ord> <n>",
-		Short: "edit a row's text in place (goal/constraint by <F-ord> <n>; others by ordinal/name)",
+		Use:   "edit <kind> <key> [--feature <f> for task] | edit goal|constraint <F-ord> <n>",
+		Short: "edit a row's text in place (goal/constraint by <F-ord> <n>; task by <T-ord> --feature; others by ordinal/name)",
 		Args:  cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kind, rest := args[0], args[1:]
@@ -144,7 +149,7 @@ func newEditCmd() *cobra.Command {
 			}
 			return runMutation(func(db dbq.DBTX, pid int64) (string, error) {
 				if !posKind {
-					return fmt.Sprintf("edited %s %s", kind, rest[0]), editRow(db, pid, kind, rest[0], text)
+					return fmt.Sprintf("edited %s %s", kind, rest[0]), editRow(db, pid, kind, rest[0], text, int64(feature))
 				}
 				fo, n, err := posArgs(rest)
 				if err != nil {
@@ -159,6 +164,7 @@ func newEditCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&text, "text", "", "new text (required)")
 	c.MarkFlagRequired("text")
+	c.Flags().IntVar(&feature, "feature", 0, "feature ordinal owning the task (required for kind=task)")
 	return c
 }
 

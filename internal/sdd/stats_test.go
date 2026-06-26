@@ -38,9 +38,9 @@ func TestStatsScopedToProject(t *testing.T) {
 	fa, _ := addFeature(db, a, "fa")
 	addTask(db, a, fa, "todo", nil)
 	tDoing, _ := addTask(db, a, fa, "doing", nil)
-	setTaskStatus(db, a, tDoing, "~")
+	setTaskStatus(db, a, 1, tDoing, "~")
 	tDone, _ := addTask(db, a, fa, "done", nil)
-	setTaskStatus(db, a, tDone, "x")
+	setTaskStatus(db, a, 1, tDone, "x")
 	addUnknown(db, a, fa, "an unknown")
 
 	// B: deliberately different volumes that must NOT bleed into A's report.

@@ -41,7 +41,7 @@ func TestCatDefaultScopesToUnfinished(t *testing.T) {
 	addFeature(db, pid, "grilled")        // ord 3, zero tasks
 	addTask(db, pid, f1, "done", nil)     // T1
 	addTask(db, pid, f2, "todo", nil)     // T2
-	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 1, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,7 +67,7 @@ func TestCatFeatureByOrdShowsBuilt(t *testing.T) {
 	f1, _ := addFeature(db, pid, "built")
 	addFeature(db, pid, "open")
 	addTask(db, pid, f1, "done", nil)
-	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 1, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,7 +96,7 @@ func TestCatUnknownFeatureErrors(t *testing.T) {
 	// open selector with everything built is NOT an error — empty is valid.
 	f1, _ := addFeature(db, pid, "built") // ord 2
 	addTask(db, pid, f1, "done", nil)     // T1
-	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 2, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -108,7 +108,7 @@ func TestCatAllBuiltDurablesOnly(t *testing.T) {
 	addInvariant(db, pid, "an invariant")
 	f1, _ := addFeature(db, pid, "built")
 	addTask(db, pid, f1, "done", nil)
-	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 1, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,10 +137,10 @@ func TestCatBlocksByteIdenticalToFullSpec(t *testing.T) {
 	addTask(db, pid, f1, "done a", nil)     // T1
 	addTask(db, pid, f2, "todo b", nil)     // T2
 	addTask(db, pid, f3, "done c", nil)     // T3
-	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 1, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
-	if err := setTaskStatus(db, pid, 3, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 3, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,7 +172,7 @@ func TestExportStaysFullWithBuiltFeatures(t *testing.T) {
 	f1, _ := addFeature(db, pid, "built")
 	addFeature(db, pid, "open")
 	addTask(db, pid, f1, "done", nil)
-	if err := setTaskStatus(db, pid, 1, "x"); err != nil {
+	if err := setTaskStatus(db, pid, 1, 1, "x"); err != nil {
 		t.Fatal(err)
 	}
 

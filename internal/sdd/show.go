@@ -37,7 +37,7 @@ func ordArg(s, prefix string) (int, error) {
 // (V<ord>/I.<name>/T<ord>/B<ord>/R<ord>), formatted through the same fmt*Line
 // helpers as renderSpec (V18). Read-pure (V16); scoped by project (V20).
 // Unknown ref/kind → error (V17).
-func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
+func showRef(db *sql.DB, projectID int64, ref string, featureOrd int64) (string, error) {
 	ctx := context.Background()
 	q := dbq.New(db)
 	switch {
@@ -65,9 +65,12 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		r, err := q.ShowTask(ctx, dbq.ShowTaskParams{ProjectID: projectID, Ord: int64(ord)})
+		if featureOrd == 0 {
+			return "", fmt.Errorf("show %s needs --feature <f> (task ords are per-feature, V117)", ref)
+		}
+		r, err := q.ShowTask(ctx, dbq.ShowTaskParams{ProjectID: projectID, Ord: featureOrd, Ord_2: int64(ord)})
 		if err != nil {
-			return "", fmt.Errorf("no task %q in this project", ref)
+			return "", fmt.Errorf("no task %q in feature F%d", ref, featureOrd)
 		}
 		cites, err := taskCites(db, r.ID)
 		if err != nil {
@@ -107,8 +110,9 @@ func showRef(db *sql.DB, projectID int64, ref string) (string, error) {
 }
 
 func newShowCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "show <ref>",
+	var feature int
+	c := &cobra.Command{
+		Use:   "show <ref> [--feature <f> for T refs]",
 		Short: "print the caveman line for one ref (V/I/T/B/R), read-only",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -117,7 +121,7 @@ func newShowCmd() *cobra.Command {
 				return err
 			}
 			defer db.Close()
-			line, err := showRef(db, pid, args[0])
+			line, err := showRef(db, pid, args[0], int64(feature))
 			if err != nil {
 				return err
 			}
@@ -125,4 +129,6 @@ func newShowCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().IntVar(&feature, "feature", 0, "feature ordinal (required for a T<n> ref)")
+	return c
 }

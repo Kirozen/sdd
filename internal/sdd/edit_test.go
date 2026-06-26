@@ -30,7 +30,7 @@ func TestEditPreservesID(t *testing.T) {
 	var idBefore int64
 	db.QueryRow(`SELECT id FROM invariant WHERE project_id=? AND ord=?`, pid, invOrd).Scan(&idBefore)
 
-	if err := editRow(db, pid, "invariant", strconv.FormatInt(invOrd, 10), "new text"); err != nil {
+	if err := editRow(db, pid, "invariant", strconv.FormatInt(invOrd, 10), "new text", 0); err != nil {
 		t.Fatalf("editRow: %v", err)
 	}
 
@@ -52,7 +52,7 @@ func TestEditPreservesID(t *testing.T) {
 func TestEditUnknownKind(t *testing.T) {
 	db := openTestDB(t)
 	pid := mustProject(t, db)
-	if err := editRow(db, pid, "bogus", "1", "x"); err == nil {
+	if err := editRow(db, pid, "bogus", "1", "x", 0); err == nil {
 		t.Error("edit on unknown kind succeeded")
 	}
 }

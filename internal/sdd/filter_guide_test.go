@@ -30,7 +30,7 @@ func TestListTasksFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filter feature: %v", err)
 	}
-	if len(inF2) != 1 || !strings.Contains(inF2[0], "T2|.|b") {
+	if len(inF2) != 1 || !strings.Contains(inF2[0], "T1|.|b") {
 		t.Fatalf("feature filter wrong: %v", inF2)
 	}
 

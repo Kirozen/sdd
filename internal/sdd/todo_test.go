@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-func mustSet(t *testing.T, db *sql.DB, pid, ord int64, status string) {
+func mustSet(t *testing.T, db *sql.DB, pid, featOrd, ord int64, status string) {
 	t.Helper()
-	if err := setTaskStatus(db, pid, ord, status); err != nil {
-		t.Fatalf("set T%d %s: %v", ord, status, err)
+	if err := setTaskStatus(db, pid, featOrd, ord, status); err != nil {
+		t.Fatalf("set T%d @F%d %s: %v", ord, featOrd, status, err)
 	}
 }
 
@@ -22,12 +22,12 @@ func TestTodoSelectsUnfinishedOnly(t *testing.T) {
 	addTask(db, pid, f1, "todo task", nil) // T1 .
 	addTask(db, pid, f1, "wip task", nil)  // T2
 	addTask(db, pid, f1, "done task", nil) // T3
-	mustSet(t, db, pid, 2, "~")
-	mustSet(t, db, pid, 3, "x")
+	mustSet(t, db, pid, 1, 2, "~")
+	mustSet(t, db, pid, 1, 3, "x")
 	// a fully-done feature must be absent entirely
 	f2, _ := addFeature(db, pid, "f2")
 	addTask(db, pid, f2, "f2 only task", nil) // T4
-	mustSet(t, db, pid, 4, "x")
+	mustSet(t, db, pid, 2, 1, "x")
 
 	rows, err := todoRows(db, pid)
 	if err != nil {
@@ -107,7 +107,7 @@ func TestTodoEmptyWhenNoPending(t *testing.T) {
 	pid := mustProject(t, db)
 	f, _ := addFeature(db, pid, "f")
 	addTask(db, pid, f, "t", nil) // T1
-	mustSet(t, db, pid, 1, "x")
+	mustSet(t, db, pid, 1, 1, "x")
 
 	rows, err := todoRows(db, pid)
 	if err != nil {

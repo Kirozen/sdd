@@ -23,8 +23,8 @@ func TestRefsReverseCites(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("refs V2 = %d lines, want 2: %v", len(got), got)
 	}
-	if !strings.HasPrefix(got[0], "T2|") {
-		t.Errorf("refs V2[0] = %q, want the citing task T2", got[0])
+	if !strings.HasPrefix(got[0], "F1 T2|") {
+		t.Errorf("refs V2[0] = %q, want the citing task F1 T2", got[0])
 	}
 	if !strings.HasPrefix(got[1], "B1|") {
 		t.Errorf("refs V2[1] = %q, want the fixing bug B1", got[1])
@@ -35,8 +35,8 @@ func TestRefsReverseCites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refs I.init: %v", err)
 	}
-	if len(got) != 1 || !strings.HasPrefix(got[0], "T1|") {
-		t.Errorf("refs I.init = %v, want [T1...]", got)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "F1 T1|") {
+		t.Errorf("refs I.init = %v, want [F1 T1...]", got)
 	}
 }
 
