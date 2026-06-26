@@ -10,8 +10,15 @@ import (
 var Version = "dev"
 
 // NewRootCmd is the exported constructor for the sdd root command, used by the
-// cmd/sdd entrypoint. Internal callers (apply, tests) use newRootCmd directly.
-func NewRootCmd() *cobra.Command { return newRootCmd() }
+// cmd/sdd entrypoint. It instruments the tree for usage recording (V110) —
+// internal callers (apply's per-line dispatch, the test harness) use the
+// unexported newRootCmd directly so their re-entrant executions are never
+// counted as user invocations.
+func NewRootCmd() *cobra.Command {
+	root := newRootCmd()
+	instrument(root)
+	return root
+}
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
