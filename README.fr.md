@@ -145,7 +145,7 @@ courant et affiche son chemin (`--sql` pour un dump texte portable).
 
 **Lectures (pures, sans ré-export)** : `show`, `list` (avec `--pretty`, et pour
 les tâches `--status`/`--feature`), `refs`, `status`, `next`, `guide`, `cover`,
-`search`, `projects`
+`search`, `projects`, `stats`
 
 Statuts de tâche : `.` à faire · `~` en cours · `x` fait.
 Statuts d'unknown : `open` · `resolved` (jamais supprimé).
@@ -174,7 +174,10 @@ invariants sont gardés par un test, lesquels ne le sont pas), `sdd search
 <terme>` (recherche plein-texte sur le *contenu* des lignes du projet courant —
 là où `refs` cherche par clé de citation), `sdd projects` (tous les projets du
 store global avec leurs compteurs ; la seule commande qui regarde au-delà du
-projet courant).
+projet courant), `sdd stats` (compteurs de volume par type — invariants,
+interfaces, bugs, research, tests, unknowns, features, tâches ventilées par
+statut — pour le projet courant ; `sdd stats --all` agrège tout le store et
+ajoute le nombre de projets et la taille du fichier `spec.db`).
 
 ## Où vivent les données
 
