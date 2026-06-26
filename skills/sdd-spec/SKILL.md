@@ -32,7 +32,7 @@ Feature-scoped (wiped per feature):
 sdd add-goal "<line>" --feature <id>
 sdd add-constraint "<bullet>" --feature <id>
 sdd add-task "<task>" --feature <id> --cites V2,I.init
-sdd add-cite <T-ord> V3,I.foo                     # cite an EXISTING task
+sdd add-cite <T-ord> --feature <id> V3,I.foo      # cite an EXISTING task (ords per-feature, V117)
 ```
 Landing a whole spec at once? Batch every write in one transaction with
 `sdd apply` — TAB-delimited `add-*` lines on stdin, all-or-nothing, a single

@@ -14,7 +14,8 @@ Single-thread plan→execute. The task list lives in spec.db; read it via
 
 ## LOAD
 1. `sdd cat` to read the spec. If no spec.db → tell the user to run sdd-spec. Stop.
-2. Pick the target: `T<n>` (that task), `--next` (lowest `.`/`~`), or `--all`.
+2. Pick the target: `T<n> --feature <f>` (that task — ords are per-feature, V117),
+   `--next` (lowest `.`/`~`), or `--all`.
 3. High blast radius (shared module, data, public interface)? Run sdd-review first.
 
 Orient with the pure read commands: `sdd next` (next actionable task + its goal
@@ -33,10 +34,10 @@ For the chosen task:
 
 ## EXECUTE per task
 ```
-sdd set-task <id> --status ~     # wip
+sdd set-task <T-ord> --feature <f> --status ~   # wip (task ords are per-feature, V117)
 # edit code per plan
 # run the verification command
-sdd set-task <id> --status x     # pass -> done
+sdd set-task <T-ord> --feature <f> --status x   # pass -> done
 ```
 On failure: do NOT retry blindly — invoke **sdd-backprop** first.
 
