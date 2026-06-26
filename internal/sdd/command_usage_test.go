@@ -2,6 +2,7 @@ package sdd
 
 import (
 	"bytes"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,6 +128,99 @@ func TestRecordingFailureNeverBreaksCommand(t *testing.T) {
 	defer db2.Close()
 	if tableSQL(t, db2, "command_usage") != "" {
 		t.Error("telemetry recreated command_usage (V116: no schema side-effect)")
+	}
+}
+
+// insertUsage seeds a command_usage row directly (test fixture).
+func insertUsage(t *testing.T, db *sql.DB, pid int64, cmd string, ok, fail int64) {
+	t.Helper()
+	if _, err := db.Exec(
+		`INSERT INTO command_usage(project_id, command, ok_count, fail_count, last_seen) VALUES(?,?,?,?,?)`,
+		pid, cmd, ok, fail, "2026-01-02T03:04:05Z"); err != nil {
+		t.Fatalf("seed usage: %v", err)
+	}
+}
+
+// lineFor returns the rendered line whose first field equals command, or "".
+func lineFor(lines []string, command string) string {
+	for _, l := range lines {
+		if f := strings.Fields(l); len(f) > 0 && f[0] == command {
+			return l
+		}
+	}
+	return ""
+}
+
+// V114/V20: the default `usage` view counts ONLY the current project's rows and
+// renders them busiest-first — a command of project B never appears in A's view.
+func TestUsageReportScopedAndSorted(t *testing.T) {
+	db := openTestDB(t)
+	pidA := mustProject(t, db)
+	pidB := mustProject(t, db)
+	insertUsage(t, db, pidA, "list", 3, 0)
+	insertUsage(t, db, pidA, "show", 1, 1)
+	insertUsage(t, db, pidB, "stats", 5, 0)
+
+	lines, err := usageReport(db, pidA)
+	if err != nil {
+		t.Fatalf("usageReport: %v", err)
+	}
+	joined := strings.Join(lines, "\n")
+	if lineFor(lines, "list") == "" || lineFor(lines, "show") == "" {
+		t.Errorf("project A view missing its own commands:\n%s", joined)
+	}
+	if lineFor(lines, "stats") != "" {
+		t.Errorf("project A view leaked project B's command (V20):\n%s", joined)
+	}
+	// busiest-first: list (3) before show (2) (V114).
+	if strings.Index(joined, "list") > strings.Index(joined, "show") {
+		t.Errorf("usage not sorted busiest-first (V114):\n%s", joined)
+	}
+}
+
+// V115/V112/V113: a successful resolved command increments ok, a resolved command
+// that errors increments fail, and an UNKNOWN command name (no RunE reached) is
+// never counted.
+func TestUsageCountsSuccessFailureIgnoresUnknown(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	repo := gitRepo(t)
+	mustRunInstrumented(t, repo, "", "init")
+	mustRunInstrumented(t, repo, "", "add-invariant", "x") // success
+	_ = runInstrumented(t, repo, "", "show", "V999")       // resolved cmd, bad ref -> error
+	_ = runInstrumented(t, repo, "", "no-such-command")    // unknown -> no RunE (V115)
+
+	u := usageCounts(t)
+	if got := u["add-invariant"]; got != [2]int64{1, 0} {
+		t.Errorf("add-invariant counts = %v, want one success {1 0}", got)
+	}
+	if got := u["show"]; got != [2]int64{0, 1} {
+		t.Errorf("show counts = %v, want one failure {0 1}", got)
+	}
+	if _, seen := u["no-such-command"]; seen {
+		t.Error("unknown command name was counted (V115: only resolved RunE commands)")
+	}
+}
+
+// V114: `usage --all` sums each command across every project, the sentinel-0
+// bucket (out-of-project invocations) included.
+func TestUsageAllSumsAcrossProjectsAndBucket0(t *testing.T) {
+	db := openTestDB(t)
+	pidA := mustProject(t, db)
+	pidB := mustProject(t, db)
+	insertUsage(t, db, pidA, "list", 2, 0)
+	insertUsage(t, db, pidB, "list", 3, 0)
+	insertUsage(t, db, 0, "list", 1, 0) // out-of-project sentinel bucket (V113)
+	insertUsage(t, db, pidA, "show", 0, 4)
+
+	lines, err := allUsageReport(db)
+	if err != nil {
+		t.Fatalf("allUsageReport: %v", err)
+	}
+	if l := lineFor(lines, "list"); !strings.Contains(l, "6 ok") {
+		t.Errorf("list total = %q, want 6 ok (2+3+1, bucket 0 included)", l)
+	}
+	if l := lineFor(lines, "show"); !strings.Contains(l, "4 err") {
+		t.Errorf("show total = %q, want 4 err", l)
 	}
 }
 

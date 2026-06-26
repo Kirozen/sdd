@@ -150,7 +150,7 @@ C'est le levier d'écriture groupée des agents (sdd-spec).
 
 **Lectures (pures, sans ré-export)** : `show`, `list` (avec `--pretty`, et pour
 les tâches `--status`/`--feature`), `refs`, `status`, `next`, `todo`, `guide`,
-`cover`, `search`, `projects`, `stats`
+`cover`, `search`, `projects`, `stats`, `usage`
 
 Statuts de tâche : `.` à faire · `~` en cours · `x` fait.
 Statuts d'unknown : `open` · `resolved` (jamais supprimé).
@@ -188,7 +188,11 @@ store global avec leurs compteurs ; la seule commande qui regarde au-delà du
 projet courant), `sdd stats` (compteurs de volume par type — invariants,
 interfaces, bugs, research, tests, unknowns, features, tâches ventilées par
 statut — pour le projet courant ; `sdd stats --all` agrège tout le store et
-ajoute le nombre de projets et la taille du fichier `spec.db`).
+ajoute le nombre de projets et la taille du fichier `spec.db`), `sdd usage`
+(combien de fois chaque commande a été invoquée, succès/échec et dernier appel,
+trié par fréquence — pour le projet courant ; `sdd usage --all` agrège tout le
+store). Chaque invocation s'enregistre toute seule ; un échec d'enregistrement
+n'interrompt jamais la commande.
 
 ## Où vivent les données
 

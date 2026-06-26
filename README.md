@@ -144,7 +144,7 @@ is the agents' bulk-write lever (sdd-spec).
 
 **Reads (pure, no re-export)**: `show`, `list` (with `--pretty`, and
 `--status`/`--feature` for tasks), `refs`, `status`, `next`, `todo`, `guide`,
-`cover`, `search`, `projects`, `stats`
+`cover`, `search`, `projects`, `stats`, `usage`
 
 Task statuses: `.` todo · `~` in progress · `x` done.
 Unknown statuses: `open` · `resolved` (never deleted).
@@ -173,7 +173,11 @@ current project's rows — where `refs` searches by citation key), `sdd projects
 beyond the current project), `sdd stats` (per-type volume counts — invariants,
 interfaces, bugs, research, tests, unknowns, features, tasks broken down by
 status — for the current project; `sdd stats --all` aggregates the whole store
-and adds the project count and the `spec.db` file size).
+and adds the project count and the `spec.db` file size), `sdd usage` (how many
+times each command was invoked, success/failure and last call, sorted by
+frequency — for the current project; `sdd usage --all` aggregates the whole
+store). Every invocation records itself; a recording failure never interrupts the
+command.
 
 ## Where the data lives
 

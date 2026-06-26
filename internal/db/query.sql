@@ -145,7 +145,7 @@ ORDER BY (ok_count + fail_count) DESC, command ASC;
 SELECT command,
 	CAST(SUM(ok_count) AS INTEGER)   AS ok_count,
 	CAST(SUM(fail_count) AS INTEGER) AS fail_count,
-	MAX(last_seen)                   AS last_seen
+	CAST(MAX(last_seen) AS TEXT)     AS last_seen
 FROM command_usage
 GROUP BY command
 ORDER BY (SUM(ok_count) + SUM(fail_count)) DESC, command ASC;

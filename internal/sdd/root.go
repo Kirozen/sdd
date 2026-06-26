@@ -66,5 +66,6 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newProjectsCmd())
 	root.AddCommand(newSearchCmd())
 	root.AddCommand(newStatsCmd())
+	root.AddCommand(newUsageCmd())
 	return root
 }
