@@ -2,10 +2,8 @@ package sdd
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"testing"
 )
 
@@ -49,31 +47,14 @@ func readDoc(t *testing.T, path string) string {
 	return string(b)
 }
 
-// skillCorpus reads the VERSIONED skills (../../skills, the single source per
-// V86), NOT ../../.claude/skills which is a local, uncommitted dogfood install
-// — scanning that would make the oracle non-hermetic on a clean clone/CI
-// (review BLOCK-2).
-func skillCorpus(t *testing.T) string {
-	t.Helper()
-	paths, err := filepath.Glob("../../skills/*/SKILL.md")
-	if err != nil {
-		t.Fatalf("glob skills: %v", err)
-	}
-	if len(paths) == 0 {
-		t.Fatal("no SKILL.md under ../../skills — the coverage oracle scans the versioned source (V86), not .claude/skills")
-	}
-	var all strings.Builder
-	for _, p := range paths {
-		all.WriteString(readDoc(t, p) + "\n")
-	}
-	return all.String()
-}
-
-// V107: every spec-surface command must be referenced in a versioned skill or a
-// README. Anti-drift: a command shipped without a reference fails here.
+// V107: every spec-surface command must be referenced in the versioned in-repo
+// docs. The skills used to be that source (V86), but they now live in the
+// external kirozen-skills marketplace, not this repo — scanning them would make
+// the oracle non-hermetic on a clean clone/CI. So the READMEs (EN + FR) are the
+// in-repo command-documentation surface; TestReadmeCommandParity keeps them in
+// sync. Anti-drift: a command shipped without a README reference fails here.
 func TestEveryCommandIsReferenced(t *testing.T) {
-	corpus := skillCorpus(t) + "\n" +
-		readDoc(t, "../../README.fr.md") + "\n" +
+	corpus := readDoc(t, "../../README.fr.md") + "\n" +
 		readDoc(t, "../../README.md")
 
 	var uncovered []string

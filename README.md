@@ -142,7 +142,8 @@ per line) and applies them all **in a single transaction** — all-or-nothing, a
 single final re-export; a leading `new-feature` sets the current feature. This
 is the agents' bulk-write lever (sdd-spec).
 
-**Reads (pure, no re-export)**: `show`, `list` (with `--pretty`, and
+**Reads (pure, no re-export)**: `cat` (prints the whole spec — durables +
+unfinished features), `show`, `list` (with `--pretty`, and
 `--status`/`--feature` for tasks), `refs`, `status`, `next`, `todo`, `guide`,
 `cover`, `search`, `projects`, `stats`, `usage`
 

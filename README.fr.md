@@ -148,7 +148,8 @@ courant et affiche son chemin (`--sql` pour un dump texte portable).
 un seul ré-export final ; un `new-feature` en tête fixe la feature courante.
 C'est le levier d'écriture groupée des agents (sdd-spec).
 
-**Lectures (pures, sans ré-export)** : `show`, `list` (avec `--pretty`, et pour
+**Lectures (pures, sans ré-export)** : `cat` (imprime la spec entière —
+durables + features inachevées), `show`, `list` (avec `--pretty`, et pour
 les tâches `--status`/`--feature`), `refs`, `status`, `next`, `todo`, `guide`,
 `cover`, `search`, `projects`, `stats`, `usage`
 
