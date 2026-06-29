@@ -97,8 +97,25 @@ destructive.
 - **Invariants drive the design.** Code comments cite invariants as `V<n>` and reference the
   rule they enforce. When changing behavior, check whether an invariant covers it; if a bug
   reveals a missing one, that's the `sdd-backprop` move (bug → new invariant).
-- **The `sdd-*` skills orchestrate the spec lifecycle** (grill → spec → research → review →
-  build → backprop → deepen). All durable spec writes go through the `sdd` CLI, never manual
-  SPEC.md edits.
+- **All durable spec writes go through the `sdd` CLI**, never manual SPEC.md edits. The
+  `sdd-*` skills that orchestrate the spec lifecycle do NOT live here anymore — see *Release
+  & plugin distribution* below.
 - SPEC.md and spec.db are gitignored; `README.fr.md` is versioned. The built `sdd` binary is
   gitignored too.
+
+## Release & plugin distribution
+
+This repo is the **engine**: the Go CLI plus the release pipeline. The Claude plugin
+(skills, commands, hooks, provisioning script) lives separately in the `kirozen-skills`
+marketplace under `plugins/sdd/`; this repo no longer carries any `.claude-plugin/` manifest.
+
+`goreleaser` (`.goreleaser.yaml`, driven by `.github/workflows/release.yml` on a `vX.Y.Z`
+tag) emits raw per-platform binaries `sdd_<os>_<arch>` + a `SHA256SUMS` file as GitHub
+release assets. The plugin's `SessionStart` hook (`scripts/ensure-sdd-binary.sh`, kept here
+as the contract doc) downloads the asset matching its `plugin.json` version and verifies the
+checksum before placing it on PATH. **Asset names and `SHA256SUMS` are a contract** —
+renaming them breaks provisioning.
+
+**Version coupling (V82):** a release tag `vX.Y.Z` must match the `version` in the plugin's
+vendored `plugin.json`. After cutting a release here, bump that version in `kirozen-skills`
+or installed users keep the old binary.
